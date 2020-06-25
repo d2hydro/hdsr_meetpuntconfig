@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue May 26 11:15:23 2020
 
-@author: danie
-"""
+__title__ = 'fews_utilities'
+__description__ = 'to read a Deltares-FEWS config into Python'
+__version__ = '0.1'
+__author__ = 'Daniel Tollenaar'
+__author_email__ = 'daniel@d2hydro.nl'
+__license__ =  'MIT License'
+
 
 from collections import defaultdict
-import logging
 import os
 import xml.etree.ElementTree as ET
 
@@ -80,6 +82,3 @@ class Config:
         
         #populate config dir-structure
         self._populate_files()
-        
-path = r'd:\FEWS\HDSR_WIS\CAW\config'
-config = Config(path)

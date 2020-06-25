@@ -2,3 +2,4 @@
 *.pyc
 scripts/mpt_startenddate_total_pixml_transferdb.py
 scripts/test.csv
+scripts/mpt_startenddate_total_pixml_transferdb_dt.py
