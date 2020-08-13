@@ -1,0 +1,11 @@
+name: caw
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - lxml
+  - numpy
+  - openpyxl
+  - pandas>=1.1.0
