@@ -9,7 +9,8 @@ __license__ = 'MIT License'
 '''
 ToDo:
 '''
- 
+
+import configparser
 from fews_utilities import Config, xml_to_dict
 import numpy as np
 import pandas as pd
@@ -20,14 +21,25 @@ import os
 import sys
 import shutil
 
-consistency_in = r'..\data\consistency.xlsx' #vorig resultaat-bestand
-consistency_out = r'..\data\consistency_uit.xlsx' #pad naar nieuw resultaat-bestand
-hist_tags_csv = r'..\data\get_series_startenddate_CAW_summary_total_sorted_20200405.csv' #csv met histTags
-config_path = r'd:\FEWS\HDSR_WIS\CAW\config' #pad naar FEWS-config
 
-#mpt_csv = r'd:\projecten\D2001.MeetpuntConfiguratie\01.data\HistTags\mpt_startenddate_total_pixml_transferdb_DT20200405.csv'
-hist_tags_no_match_csv = r'd:\projecten\D2001.MeetpuntConfiguratie\01.data\HistTags\mpt_startenddate_total_pixml_transferdb_nomatch_DT20200405.csv'
+# initialisatie
+logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
+summary = dict()
+config = configparser.ConfigParser()
+config.read(r'..\config\config.ini')
 
+# consistency_in = r'..\data\consistency.xlsx' #vorig resultaat-bestand
+# consistency_out = r'..\data\consistency_uit.xlsx' #pad naar nieuw resultaat-bestand
+# hist_tags_csv = r'..\data\get_series_startenddate_CAW_summary_total_sorted_20200405.csv' #csv met histTags
+# fews_config = r'd:\FEWS\HDSR_WIS\CAW\config' #pad naar FEWS-config
+
+# paden
+consistency_in = r'{}'.format(config['paden']['consistency_in'])
+consistency_out = r'{}'.format(config['paden']['consistency_out'])
+hist_tags_csv = r'{}'.format(config['paden']['hist_tags_csv'])
+fews_config = r'{}'.format(config['paden']['fews_config'])
+
+# layout xlsx-file
 fixed_sheets = ['histTag_ignore','inhoudsopgave']
 warning_sheets = ['histTags_noMatch','dubbele idmaps','idmap v sectie']
 idmap_files = ['IdOPVLWATER',
@@ -36,6 +48,7 @@ idmap_files = ['IdOPVLWATER',
               'IdOPVLWATER_WQ',
               'IdGrondwaterCAW']
 
+# secties in idmap files
 idmap_sections = {'IdOPVLWATER':{'KUNSTWERKEN':[{'section_start': '<!--KUNSTWERK SUBLOCS (old CAW id)-->',
                                                  'section_end': '<!--WATERSTANDSLOCATIES (old CAW id)-->'},
                                                 {'section_start': '<!--KUNSTWERK SUBLOCS (new CAW id)-->',
@@ -45,8 +58,6 @@ idmap_sections = {'IdOPVLWATER':{'KUNSTWERKEN':[{'section_start': '<!--KUNSTWERK
                                                 {'section_start': '<!--WATERSTANDSLOCATIES (new CAW id)-->'}]}}
 
 
-logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
-summary = dict()
 
 #%% functies
 def idmap2tags(row):
@@ -79,7 +90,7 @@ if not 'histTag_ignore' in config_df.keys():
 config_df = {key:value for key,value in config_df.items() if key in fixed_sheets}
 
 #%% inlezen idmap
-config = Config(config_path)
+config = Config(fews_config)
 idmap_total = []
 idmap_dict = {idmap:xml_to_dict(config.IdMapFiles[idmap])['idMap']['map'] 
            for idmap in idmap_files}
