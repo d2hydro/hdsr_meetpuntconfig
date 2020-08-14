@@ -20,24 +20,20 @@ from openpyxl.styles import Font, PatternFill
 import os
 import sys
 import shutil
+import re
 
 
-# initialisatie
+#%% initialisatie
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 summary = dict()
-config = configparser.ConfigParser()
-config.read(r'..\config\config.ini')
-
-# consistency_in = r'..\data\consistency.xlsx' #vorig resultaat-bestand
-# consistency_out = r'..\data\consistency_uit.xlsx' #pad naar nieuw resultaat-bestand
-# hist_tags_csv = r'..\data\get_series_startenddate_CAW_summary_total_sorted_20200405.csv' #csv met histTags
-# fews_config = r'd:\FEWS\HDSR_WIS\CAW\config' #pad naar FEWS-config
+ini_config = configparser.ConfigParser()
+ini_config.read(r'..\config\config.ini')
 
 # paden
-consistency_in = r'{}'.format(config['paden']['consistency_in'])
-consistency_out = r'{}'.format(config['paden']['consistency_out'])
-hist_tags_csv = r'{}'.format(config['paden']['hist_tags_csv'])
-fews_config = r'{}'.format(config['paden']['fews_config'])
+consistency_in = r'{}'.format(ini_config['paden']['consistency_in'])
+consistency_out = r'{}'.format(ini_config['paden']['consistency_out'])
+hist_tags_csv = r'{}'.format(ini_config['paden']['hist_tags_csv'])
+fews_config = r'{}'.format(ini_config['paden']['fews_config'])
 
 # layout xlsx-file
 fixed_sheets = ['histTag_ignore','inhoudsopgave']
@@ -73,6 +69,19 @@ def idmap2tags(row):
         fews_locs = np.NaN   
 
     return fews_locs
+
+def update_hlocs(row):
+    '''functie voor het toevoegen van start en end-date op data-frame van hoofdlocaties'''
+    
+    loc_id = row.name
+    start_date = row['STARTDATE']
+    end_date = row['ENDDATE']
+    
+    if loc_id in h_locs:
+        start_date = mpt_df[mpt_df.index.str.contains(loc_id[0:-1])]['STARTDATE'].dropna().min()
+        end_date = mpt_df[mpt_df.index.str.contains(loc_id[0:-1])]['ENDDATE'].dropna().max()
+    
+    return start_date, end_date 
 
 #%% inlezen config-excel
 try:
@@ -153,8 +162,6 @@ if not config_df['histTags_noMatch'].empty:
 else:
     logging.info('alle histTags zijn gematched in idmap')
 
-
-
 #%% aanmaken van mpt_df vanuit de fews_locid lijsten in hist_tags_df
 hist_tags_df = hist_tags_df[hist_tags_df['fews_locid'].notna()]
 mpt_hist_tags_df = hist_tags_df.explode('fews_locid').reset_index(drop=True)
@@ -179,16 +186,6 @@ h_locs_df = h_locs_df.set_index('LOC_ID')
 
 mpt_df = pd.concat([mpt_df,h_locs_df],axis=0)
 #%% de start en eindtijd op de hoofdlocatie updaten met de min/max van de sublocatie
-def update_hlocs(row):
-    loc_id = row.name
-    start_date = row['STARTDATE']
-    end_date = row['ENDDATE']
-    
-    if loc_id in h_locs:
-        start_date = mpt_df[mpt_df.index.str.contains(loc_id[0:-1])]['STARTDATE'].dropna().min()
-        end_date = mpt_df[mpt_df.index.str.contains(loc_id[0:-1])]['ENDDATE'].dropna().max()
-    
-    return start_date, end_date 
 
 mpt_df[['STARTDATE','ENDDATE']] = mpt_df.apply(update_hlocs,axis=1,result_type="expand")
 
@@ -230,6 +227,79 @@ else:
     config_df['params_missing'] =  pd.DataFrame({'parameters': params_missing})
     config_df['params_missing'] = config_df['params_missing'].set_index('parameters')
 
+#%% consistentie externe parameters met interne parameters/locaties:
+location_sets = list(config.locationSets.keys())
+hoofdloc_gdf = config.get_locations('OPVLWATER_HOOFDLOC')
+subloc_gdf = config.get_locations('OPVLWATER_SUBLOC')
+waterstand_gdf = config.get_locations('OPVLWATER_WATERSTANDEN_AUTO')
+
+for idmap_file in ['IdOPVLWATER', 'IdOPVLWATER_HYMOS']:
+    idmaps = idmap_dict[idmap_file]
+    for idmap in idmaps:
+        int_loc = idmap['internalLocation']
+        if not int_loc[0:2] == 'WQ':
+            loc_properties = all_types = None
+            hoofdloc = subloc = waterstandloc = False
+            if int_loc[-1] == '0':
+                loc_properties = hoofdloc_gdf[hoofdloc_gdf['LOC_ID'] == int_loc]
+                hoofdloc = True
+            elif int_loc in subloc_gdf['LOC_ID'].values:
+                loc_properties = subloc_gdf[subloc_gdf['LOC_ID'] == int_loc]
+                subloc = True
+            elif int_loc in waterstand_gdf['LOC_ID'].values:
+                waterstandloc = True
+        
+            if hoofdloc | subloc | waterstandloc: 
+                if waterstandloc:
+                    all_types = ['waterstand']
+                else:
+                    all_types = loc_properties['ALLE_TYPES'].values[0].split("/")
+                    all_types = [item.lower() for item in all_types]
+            
+                ex_param = idmap['externalParameter']
+                regexes = []
+                if 'pompvijzel' in all_types:
+                    regexes = regexes + ['FQ.$', 'I.B$', 'IB.$', 'Q.$']
+                if 'stuw' in all_types:
+                    regexes = regexes + ['SW.$', 'Q.$']
+                if 'schuif' in all_types:
+                    regexes = regexes + ['ES.$', 'SP.$', 'SS.$', 'Q.$']
+                if 'vispassage' in all_types:
+                    regexes = regexes + ['Q.$']
+                if 'krooshek' in all_types:
+                    regexes = regexes + ['HB.$', 'HO.$']
+                if 'waterstand' in all_types:
+                    regexes = regexes + ['HB.$', 'HO.$']
+                    
+                regexes = list(dict.fromkeys(regexes)) #dublicates weggooien
+                if not any([regex.match(ex_param) for regex in [re.compile(rex) for rex in regexes]]):
+                    print('locatie {}. Externe parameter {} niet geldig op types {}'.format(int_loc,
+                                                                                            ex_param,
+                                                                                            all_types))
+                
+                regexes = ['HS.$','QR.$','QS.$']
+                if any([regex.match(ex_param) for regex in [re.compile(rex) for rex in regexes]]):
+                    if subloc:
+                        print('sub-locatie {} mag niet linken aan ex_par {}'.format(int_loc,ex_param))
+                elif re.compile('HR.$').match(ex_param):
+                    if hoofdloc:
+                        print('hoofdlocatie {} mag niet linken aan ex_par {}'.format(int_loc,ex_param))
+                
+        
+        
+'''
+-	pompvijzel KW9999xx = altijd expar FQx, IxB, IBx, Qx
+-	stuw KW9999xx = altijd expar SWx, Qx
+-	schuif KW9999xx = altijd expar ESx, SPx (of SSx), Qx
+-	vispassage KW9999xx = altijd ESx, SPx (of SSx), Qx
+-	debietmeter KW9999xx = altijd Qx
+-	krooshek KW9999xx = altijd HBx of HOx
+-	waterstand OW9999xx = altijd HBx of HOx
+-	stuurpeil HRx = altijd op sublocatie KW9999xx
+-	streefpeil HSx = altijd op hoofdlocatie KW9999x0
+-	stuurdebiet QRx = altijd op hoofdlocatie KW9999x0 (dus anders dan bij stuurpeil)
+-	streefdebiet QSx = altijd op hoofdlocatie KW9999x0
+'''
 #%% wegschrijven naar excel
     
 #lees input xlsx en gooi alles weg behalve de fixed_sheets
@@ -254,7 +324,6 @@ for key, value in summary.items():
 
 worksheet.column_dimensions['A'].width=40
 worksheet.auto_filter.ref = worksheet.dimensions
-
 
 xls_writer = pd.ExcelWriter(consistency_out, engine='openpyxl')
 xls_writer.book = book

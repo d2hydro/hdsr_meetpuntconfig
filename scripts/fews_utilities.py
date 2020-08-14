@@ -12,7 +12,10 @@ from collections import defaultdict
 import os
 #import xml.etree.ElementTree as ET
 from lxml import etree as ET
+import geopandas as gpd
+from shapely.geometry import Point
 
+geo_datum = {'Rijks Driehoekstelsel':'epsg:28992'}
 
 def xml_to_etree(xml_file):
     ''' parses an xml-file to an etree. ETree can be used in function etree_to_dict '''
@@ -80,11 +83,20 @@ def xml_to_dict(xml_file,section_start=None,section_end=None):
 class Config:
     
     def _populate_files(self):
+        '''build-in for loading all xml-files'''
         for (dirpath, dirnames, filenames) in os.walk(self.path):
             if not dirpath == self.path:
                 prop = next((key for key in self.__dict__.keys() if key in dirpath),None)
                 if not prop == None:
                     self.__dict__[prop].update({os.path.splitext(file_name)[0]:os.path.join(dirpath,file_name) for file_name in filenames})
+    
+    def _get_location_sets(self):
+        '''build-in method to extract a dict of locationsets'''
+
+        location_sets = xml_to_dict(self.RegionConfigFiles['LocationSets'])['locationSets']['locationSet']
+        
+        self.locationSets = {location_set['id']:{key:value for key, value in location_set.items() if not key == 'id'} 
+                    for location_set in location_sets}
     
     def __init__(self,path):
         self.path = path
@@ -108,6 +120,9 @@ class Config:
         
         #populate config dir-structure
         self._populate_files()
+        
+        #get locationSets
+        self._get_location_sets()
 
     def get_parameters(self,  dict_keys = 'groups'):
         '''method to extract a dictionary of parameter(groups) from a FEWS-config
@@ -133,4 +148,34 @@ class Config:
                     result[parameter['id']]['groupId'] = result[parameter['id']].pop('id')
             return result
                 
-                               
+
+    def get_locations(self, location_set):
+        '''method to extract a data-frame of locations from a fews locationSet
+        
+        parameters:
+            location_set: (string) id of location-set to extract the locations rom
+            
+        ToDo:
+        - support other than csvFile type locationSets
+        - concatenate attribute-files
+        - rename to internal attribute names
+        
+        '''
+        if location_set in self.locationSets.keys():
+            location_set = self.locationSets[location_set]
+            if 'csvFile' in location_set.keys():
+                file = location_set['csvFile']['file']
+                if os.path.splitext(file)[1] == '':
+                    file = '{}.csv'.format(file)
+                file = os.path.join(self.path,'MapLayerFiles',file)
+                x_attrib = location_set['csvFile']['x'].replace('%','')
+                y_attrib = location_set['csvFile']['y'].replace('%','')
+                gdf = gpd.read_file(file)
+                gdf['geometry'] = gdf.apply((lambda x: Point(float(x[x_attrib]),
+                                                             float(x[y_attrib]))),
+                                                                axis=1)
+                crs = None
+                if location_set['csvFile']['geoDatum'] in geo_datum.keys():
+                    crs = geo_datum[location_set['csvFile']['geoDatum']]
+                if not crs == None: gdf.crs = crs
+                return gdf

@@ -5,6 +5,7 @@ Python scripts ter ondersteuning van het HDSR CAW FEWS:
  
 ## Python omgeving
 Deze scripts zijn afhankelijk van een python-omgeving met de volgende bibliotheken:
+ - GeoPandas
  - Pandas: versie 1.1.0 of hoger
  - lxml
 
@@ -27,7 +28,16 @@ Het aanmaken van de omgeving doe je met de volgende stappen:
 
 *conda activate caw*
 
+In het geval je deze omgeving weer wilt verwijderen van je machine kan dit via de command prompt:
+
+*conda env remove -n caw*
+
+In het geval je deze omgeving wilt updaten met een nieuwe yml-file:
+
+*conda activate caw*
+*conda env update -f environment.yml*
+
 ## scripts configuratie
-Het bestand config\config_example.ini staat een voorbeeld bestand met variabelen die worden ingelezen door de scripts. Pas dit bestand aan met de volgende stappen:
-1. hernoem/kopieer config\config_example.ini naar config\config.ini
-1. zet alle paden in de sectie [paden] goed
+Het bestand *config\config_example.ini* staat een voorbeeld bestand met variabelen die worden ingelezen door de scripts. Pas dit bestand aan met de volgende stappen:
+1. hernoem/kopieer *config\config_example.ini* naar *config\config.ini*
+1. zet alle paden in de sectie *[paden]* goed
