@@ -41,8 +41,9 @@ idmap_sections = {'IdOPVLWATER':{'KUNSTWERKEN':[{'section_start': '<!--KUNSTWERK
                                                 {'section_start': '<!--KUNSTWERK SUBLOCS (new CAW id)-->',
                                                  'section_end':'<!--WATERSTANDSLOCATIES (new CAW id)-->'}],
                           'WATERSTANDLOCATIES':[{'section_start': '<!--WATERSTANDSLOCATIES (old CAW id)-->',
-                                                 'section_end': '<!--KUNSTWERK SUBLOCS (new CAW id)-->'},
-                                                {'section_start': '<!--WATERSTANDSLOCATIES (new CAW id)-->'}]}}
+                                                 'section_end': '<!--MSW (old CAW id)-->'},
+                                                {'section_start': '<!--WATERSTANDSLOCATIES (new CAW id)-->',
+                                                'section_end': '<!--MSW (new CAW id)-->'}]}}
 
 #%% functies
 def idmap2tags(row):
@@ -79,13 +80,14 @@ summary = dict()
 
 #inlezen paden vanuit inifile
 ini_config = configparser.ConfigParser()
-ini_config.read(workdir.joinpath(r'..\config\config.ini'))
+ini_config.read(workdir.joinpath(r'..\config\config_example.ini'))
 consistency_in = Path(r'{}'.format(ini_config['paden']['consistency_in']))
 consistency_out = Path(r'{}'.format(ini_config['paden']['consistency_out']))
 hist_tags_csv = Path(r'{}'.format(ini_config['paden']['hist_tags_csv']))
 fews_config = Path(r'{}'.format(ini_config['paden']['fews_config']))
+csv_out = Path(r'{}'.format(ini_config['paden']['csv_out']))
 
-paths = [consistency_in, consistency_out, hist_tags_csv, fews_config]
+paths = [consistency_in, consistency_out, hist_tags_csv, fews_config, csv_out]
 
 if 'mpt_ignore' in ini_config['paden'].keys():
     mpt_ignore = Path(r'{}'.format(ini_config['paden']['mpt_ignore']))
@@ -99,6 +101,9 @@ for idx, path in enumerate(paths):
         path = workdir.joinpath(path).resolve()
         paths[idx] = path
     if not path.exists():
+        if path.suffix == '':
+            logging.warning(f'{path} bestaat niet, map wordt aangemaakt')
+            path.mkdir()
         logging.error(f'{path} bestaat niet. Specificeer het juiste path in config.ini')
         sys.exit()
 
@@ -292,7 +297,7 @@ for idmap in idmap_dict['IdOPVLWATER']:
             if 'schuif' in all_types:
                 regexes = regexes + ['ES.$', 'SP.$', 'SS.$', 'Q.$']
             if 'vispassage' in all_types:
-                regexes = regexes + ['Q.$']
+                regexes = regexes + ['ES.$', 'SP.$', 'SS.$', 'Q.$']
             if 'krooshek' in all_types:
                 regexes = regexes + ['HB.$', 'HO.$']
             if 'waterstand' in all_types:
@@ -324,6 +329,11 @@ if len(param_consistency['internalLocation']) == 0:
 else:
   logging.warning('{} externe parameters passen niet bij locatie-type'.format(len(config_df['exPar & intLoc mismatch'])))                    
 
+#%% rebuild param/location consistency
+# idmap_df = pd.DataFrame.from_dict(idmap_dict['IdOPVLWATER'])
+# for loc_group in idmap_df.groupby('internalLocation'):
+#     int_loc = loc_group[0]
+    
 #%% wegschrijven naar excel
     
 #lees input xlsx en gooi alles weg behalve de fixed_sheets
@@ -371,3 +381,36 @@ for sheet_name, df in config_df.items():
 xls_writer.book.active = xls_writer.book['samenvatting']
 
 xls_writer.save()
+
+#%% updaten csv's
+def update_csv(row,mpt_df,date_threshold):
+    int_loc = row['LOC_ID']
+    if int_loc in mpt_df.index:
+        start_date = mpt_df.loc[int_loc]['STARTDATE'].strftime('%Y%m%d')
+        end_date = mpt_df.loc[int_loc]['ENDDATE']
+        if end_date > date_threshold:
+            end_date = pd.Timestamp(year=2100, month=1, day=1)
+        end_date = end_date.strftime('%Y%m%d')
+    else:
+        start_date = row['START']
+        end_date = row['EIND']
+        
+    return start_date, end_date
+
+#%%
+date_threshold = mpt_df['ENDDATE'].max() - pd.Timedelta(weeks=26)
+
+for locationSet, gdf in {'OPVLWATER_HOOFDLOC': hoofdloc_gdf,
+                         'OPVLWATER_SUBLOC': subloc_gdf,
+                         'OPVLWATER_WATERSTANDEN_AUTO': waterstand_gdf}.items():
+    logging.info(f'wegschrijven csv voor locationSet: {locationSet}')
+    df = gdf.drop('geometry',axis=1)
+    df[['START','EIND']] = df.apply(update_csv, 
+                                    args=(mpt_df, date_threshold), 
+                                    axis=1,
+                                    result_type="expand")
+
+    csv_file = csv_out.joinpath(config.locationSets[locationSet]['csvFile']['file'])
+    if csv_file.suffix == '':
+        csv_file = Path(f'{csv_file}.csv')
+    df.to_csv(csv_file, index=False)

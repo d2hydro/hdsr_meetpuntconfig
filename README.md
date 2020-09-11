@@ -42,5 +42,6 @@ Het bestand *config\config_example.ini* staat een voorbeeld bestand met variabel
 1. zet alle paden in de sectie *[paden]* goed
 
 ## Uitvoeren consistentie-checks
+Draai het script in de map scripts vanuit de command prompt:
 
-## Uitvoeren aanvullen CSV's
+*python consistency_checks.py*
