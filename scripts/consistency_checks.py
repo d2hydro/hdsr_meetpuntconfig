@@ -8,10 +8,13 @@ __license__ = 'MIT License'
 
 '''
 ToDo:
+    - instellingen verplaatsen naar config.ini
+    - logging ook in bestand opslaan
 '''
 
 import configparser
 from fews_utilities import Config, xml_to_dict
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import logging
@@ -22,22 +25,10 @@ import sys
 import shutil
 import re
 
-
-#%% initialisatie
-logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
-summary = dict()
-ini_config = configparser.ConfigParser()
-ini_config.read(r'..\config\config.ini')
-
-# paden
-consistency_in = r'{}'.format(ini_config['paden']['consistency_in'])
-consistency_out = r'{}'.format(ini_config['paden']['consistency_out'])
-hist_tags_csv = r'{}'.format(ini_config['paden']['hist_tags_csv'])
-fews_config = r'{}'.format(ini_config['paden']['fews_config'])
-
-# layout xlsx-file
+#%% instellingen
+# layout excel spreadsheet
 fixed_sheets = ['histTag_ignore','inhoudsopgave']
-warning_sheets = ['histTags_noMatch','dubbele idmaps','idmap v sectie']
+warning_sheets = ['histTags_noMatch','dubbele idmaps','idmap v sectie','exPar & intLoc mismatch']
 idmap_files = ['IdOPVLWATER',
               'IdOPVLWATER_HYMOS',
               'IdHDSR_NSC',
@@ -53,11 +44,9 @@ idmap_sections = {'IdOPVLWATER':{'KUNSTWERKEN':[{'section_start': '<!--KUNSTWERK
                                                  'section_end': '<!--KUNSTWERK SUBLOCS (new CAW id)-->'},
                                                 {'section_start': '<!--WATERSTANDSLOCATIES (new CAW id)-->'}]}}
 
-
-
 #%% functies
 def idmap2tags(row):
-    '''functie voor het toevoegen van fews-locatie-ids aan de hist_tags data-frame'''
+    '''functie voor het toevoegen van fews-locatie-ids aan de hist_tags data-frame in de apply-method'''
      
     exloc, expar = row['serie'].split('_',1)
     fews_locs = [col['internalLocation'] 
@@ -71,7 +60,7 @@ def idmap2tags(row):
     return fews_locs
 
 def update_hlocs(row):
-    '''functie voor het toevoegen van start en end-date op data-frame van hoofdlocaties'''
+    '''functie voor het toevoegen van start en end-date op data-frame van hoofdlocaties in de apply-method'''
     
     loc_id = row.name
     start_date = row['STARTDATE']
@@ -83,31 +72,60 @@ def update_hlocs(row):
     
     return start_date, end_date 
 
+#%% initialisatie
+workdir = Path(__file__).parent
+logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
+summary = dict()
+
+#inlezen paden vanuit inifile
+ini_config = configparser.ConfigParser()
+ini_config.read(workdir.joinpath(r'..\config\config.ini'))
+consistency_in = Path(r'{}'.format(ini_config['paden']['consistency_in']))
+consistency_out = Path(r'{}'.format(ini_config['paden']['consistency_out']))
+hist_tags_csv = Path(r'{}'.format(ini_config['paden']['hist_tags_csv']))
+fews_config = Path(r'{}'.format(ini_config['paden']['fews_config']))
+
+paths = [consistency_in, consistency_out, hist_tags_csv, fews_config]
+
+if 'mpt_ignore' in ini_config['paden'].keys():
+    mpt_ignore = Path(r'{}'.format(ini_config['paden']['mpt_ignore']))
+    paths += [mpt_ignore]
+else:
+    mpt_ignore = None
+
+#controleren of paden bestaan
+for idx, path in enumerate(paths):
+    if not path.is_absolute():
+        path = workdir.joinpath(path).resolve()
+        paths[idx] = path
+    if not path.exists():
+        logging.error(f'{path} bestaat niet. Specificeer het juiste path in config.ini')
+        sys.exit()
+
 #%% inlezen config-excel
+# kopieeren van consistency workbook naar output
 try:
     shutil.copyfile(consistency_in, consistency_out)
 except Exception as e: 
     logging.error(e) 
     sys.exit()
 
-config_df = pd.read_excel(consistency_in,sheet_name=None)
+config_df = pd.read_excel(consistency_in,sheet_name=None,engine='openpyxl')
 if not 'histTag_ignore' in config_df.keys():
     logging.error('werkblad "histTag_ignore" mist in {}'.format(consistency_in))
     sys.exit()
     
-# weggooien van alle output-sheets
+# weggooien van alle output-sheets, behalve degenen opgeschoond
 config_df = {key:value for key,value in config_df.items() if key in fixed_sheets}
 
-#%% inlezen idmap
+#%% inlezen idmap-files
 config = Config(fews_config)
-idmap_total = []
 idmap_dict = {idmap:xml_to_dict(config.IdMapFiles[idmap])['idMap']['map'] 
            for idmap in idmap_files}
-
-for idmap in idmap_dict.values():
-    idmap_total += idmap
+idmap_total = [j for i in idmap_dict.values() for j in i]
     
 #%% controle op KW/OW
+logging.info('controle op KW/OW locaties in juiste sectie')
 config_df['idmap v sectie'] = pd.DataFrame(columns=['bestand',
                                                     'externalLocation',
                                                     'externalParameter',
@@ -132,24 +150,26 @@ for idmap, idmap_subsecs in idmap_sections.items():
                                                                                                        section_end,
                                                                                                        idmap))
                 df = pd.DataFrame(idmap_wrong_section)
+                df['sectie'] = section_start
                 df['bestand'] = idmap
                 config_df['idmap v sectie'] = pd.concat([config_df['idmap v sectie'], df], axis=0)
     
     summary['idmaps in verkeerde sectie'] = len(config_df['idmap v sectie'])
 
 #%% inlezen hist tags & ignore lijst
+logging.info('zoeken naar missende histTags in idmaps')
 hist_tags_df = pd.read_csv(hist_tags_csv,
                            parse_dates = ['total_min_start_dt', 'total_max_end_dt'],
                            sep = ';')
 
 
 #filteren hist_tags op alles wat niet in ignored staat
-hist_tags_df = hist_tags_df[~hist_tags_df['serie'].isin(config_df['histTag_ignore']['UNKNOWN_SERIE'])]
-
-#%% toevoegen lijsten met fews_locids aan his_tags_df        
+if mpt_ignore:
+   config_df['histTag_ignore'] = pd.read_csv(mpt_ignore,sep=';',header=0)
+hist_tags_df = hist_tags_df[~hist_tags_df['serie'].isin(config_df['histTag_ignore']['UNKNOWN_SERIE'])]     
 hist_tags_df['fews_locid'] = hist_tags_df.apply(idmap2tags, axis=1)
 
-#%% wegschrijven his-tags die niet zijn gematched
+# wegschrijven his-tags die niet zijn opgenomen in de idmap
 hist_tags_no_match_df = hist_tags_df[hist_tags_df['fews_locid'].isna()]
 hist_tags_no_match_df = hist_tags_no_match_df.drop('fews_locid',axis=1)
 hist_tags_no_match_df.columns = ['UNKNOWN_SERIE','STARTDATE','ENDDATE']
@@ -158,15 +178,16 @@ config_df['histTags_noMatch'] = hist_tags_no_match_df
 summary['histTags_noMatch'] = len(hist_tags_no_match_df)
 
 if not config_df['histTags_noMatch'].empty:
-    logging.warning('{} histTags zijn niet gematched'.format(len(config_df['histTags_noMatch'])))
+    logging.warning('{} histTags zijn niet opgenomen in idmap'.format(len(config_df['histTags_noMatch'])))
 else:
-    logging.info('alle histTags zijn gematched in idmap')
+    logging.info('alle histTags zijn opgenomen in idmap')
 
 #%% aanmaken van mpt_df vanuit de fews_locid lijsten in hist_tags_df
+logging.info('omzetten van histTags naar meetpunten')
 hist_tags_df = hist_tags_df[hist_tags_df['fews_locid'].notna()]
 mpt_hist_tags_df = hist_tags_df.explode('fews_locid').reset_index(drop=True)
 
-#%% bepalen minimale start en maximale eindtijd per fews_locid. 
+# bepalen minimale start en maximale eindtijd per fews_locid. 
 mpt_df = pd.concat([mpt_hist_tags_df.groupby(['fews_locid'], sort=False)['total_min_start_dt'].min(),
                     mpt_hist_tags_df.groupby(['fews_locid'], sort=False)['total_max_end_dt'].max()],
                    axis=1)
@@ -175,7 +196,7 @@ mpt_df = mpt_df.sort_index(axis=0)
 mpt_df.columns = ['STARTDATE','ENDDATE']
 mpt_df.index.name = 'LOC_ID'
 
-#%% alle hoofdlocaties waar geen histag op binnekomt toevoegen
+# alle hoofdlocaties waar geen histag op binnekomt toevoegen
 kw_locs = list(mpt_df[mpt_df.index.str.contains('KW', regex=False)].index)
 h_locs = np.unique(['{}0'.format(loc[0:-1]) for loc in kw_locs])
 h_locs_missing = [loc for loc in h_locs if not loc in list(mpt_df.index)]
@@ -185,7 +206,7 @@ h_locs_df = pd.DataFrame(data={'LOC_ID' : h_locs_missing,
 h_locs_df = h_locs_df.set_index('LOC_ID')
 
 mpt_df = pd.concat([mpt_df,h_locs_df],axis=0)
-#%% de start en eindtijd op de hoofdlocatie updaten met de min/max van de sublocatie
+# de start en eindtijd op de hoofdlocatie updaten met de min/max van de sublocatie
 
 mpt_df[['STARTDATE','ENDDATE']] = mpt_df.apply(update_hlocs,axis=1,result_type="expand")
 
@@ -193,12 +214,12 @@ mpt_df = mpt_df.sort_index()
 config_df['mpt'] = mpt_df
 
 #%% consistentie parameters: zijn alle interne parameters opgenomen in parameters.xml
+logging.info('controle dubbele idmaps')
 config_df['dubbele idmaps'] = pd.DataFrame(columns=['bestand',
                                                     'externalLocation',
                                                     'externalParameter',
                                                     'internalLocation',
-                                                    'internalParameter'])
-                      
+                                                    'internalParameter'])                    
 for idmap_file in idmap_files:
     idmap_doubles = [id_map for id_map in idmap_dict[idmap_file] if idmap_dict[idmap_file].count(id_map) > 1]
     if len(idmap_doubles) > 0:
@@ -233,73 +254,76 @@ hoofdloc_gdf = config.get_locations('OPVLWATER_HOOFDLOC')
 subloc_gdf = config.get_locations('OPVLWATER_SUBLOC')
 waterstand_gdf = config.get_locations('OPVLWATER_WATERSTANDEN_AUTO')
 
-for idmap_file in ['IdOPVLWATER', 'IdOPVLWATER_HYMOS']:
-    idmaps = idmap_dict[idmap_file]
-    for idmap in idmaps:
-        int_loc = idmap['internalLocation']
-        if not int_loc[0:2] == 'WQ':
-            loc_properties = all_types = None
-            hoofdloc = subloc = waterstandloc = False
-            if int_loc[-1] == '0':
-                loc_properties = hoofdloc_gdf[hoofdloc_gdf['LOC_ID'] == int_loc]
-                hoofdloc = True
-            elif int_loc in subloc_gdf['LOC_ID'].values:
-                loc_properties = subloc_gdf[subloc_gdf['LOC_ID'] == int_loc]
-                subloc = True
-            elif int_loc in waterstand_gdf['LOC_ID'].values:
-                waterstandloc = True
+param_consistency = {'internalLocation':[],
+                     'exParError':[],
+                     'types':[],
+                     'subLocError':[],
+                     'hoofdlocError':[]
+                     }
+
+for idmap in idmap_dict['IdOPVLWATER']:
+    exParError = subLocError = hoofdLocError = None
+    int_loc = idmap['internalLocation']
+    if not int_loc[0:2] == 'WQ':
+        loc_properties = all_types = None
+        hoofdloc = subloc = waterstandloc = False
+        if int_loc[-1] == '0':
+            loc_properties = hoofdloc_gdf[hoofdloc_gdf['LOC_ID'] == int_loc]
+            hoofdloc = True
+        elif int_loc in subloc_gdf['LOC_ID'].values:
+            loc_properties = subloc_gdf[subloc_gdf['LOC_ID'] == int_loc]
+            subloc = True
+        elif int_loc in waterstand_gdf['LOC_ID'].values:
+            waterstandloc = True
+    
+        if hoofdloc | subloc | waterstandloc: 
+            if waterstandloc:
+                all_types = ['waterstand']
+            else:
+                all_types = loc_properties['ALLE_TYPES'].values[0].split("/")
+                all_types = [item.lower() for item in all_types]
         
-            if hoofdloc | subloc | waterstandloc: 
-                if waterstandloc:
-                    all_types = ['waterstand']
-                else:
-                    all_types = loc_properties['ALLE_TYPES'].values[0].split("/")
-                    all_types = [item.lower() for item in all_types]
-            
-                ex_param = idmap['externalParameter']
-                regexes = []
-                if 'pompvijzel' in all_types:
-                    regexes = regexes + ['FQ.$', 'I.B$', 'IB.$', 'Q.$']
-                if 'stuw' in all_types:
-                    regexes = regexes + ['SW.$', 'Q.$']
-                if 'schuif' in all_types:
-                    regexes = regexes + ['ES.$', 'SP.$', 'SS.$', 'Q.$']
-                if 'vispassage' in all_types:
-                    regexes = regexes + ['Q.$']
-                if 'krooshek' in all_types:
-                    regexes = regexes + ['HB.$', 'HO.$']
-                if 'waterstand' in all_types:
-                    regexes = regexes + ['HB.$', 'HO.$']
+            ex_param = idmap['externalParameter']
+            regexes = []
+            if 'pompvijzel' in all_types:
+                regexes = regexes + ['FQ.$', 'I.B$', 'IB.$', 'Q.$']
+            if 'stuw' in all_types:
+                regexes = regexes + ['SW.$', 'Q.$']
+            if 'schuif' in all_types:
+                regexes = regexes + ['ES.$', 'SP.$', 'SS.$', 'Q.$']
+            if 'vispassage' in all_types:
+                regexes = regexes + ['Q.$']
+            if 'krooshek' in all_types:
+                regexes = regexes + ['HB.$', 'HO.$']
+            if 'waterstand' in all_types:
+                regexes = regexes + ['HB.$', 'HO.$', 'H$']
+                
+            regexes = list(dict.fromkeys(regexes)) #dublicates weggooien
+            if not any([regex.match(ex_param) for regex in [re.compile(rex) for rex in regexes]]):
+                exParError = ex_param
                     
-                regexes = list(dict.fromkeys(regexes)) #dublicates weggooien
-                if not any([regex.match(ex_param) for regex in [re.compile(rex) for rex in regexes]]):
-                    print('locatie {}. Externe parameter {} niet geldig op types {}'.format(int_loc,
-                                                                                            ex_param,
-                                                                                            all_types))
-                
-                regexes = ['HS.$','QR.$','QS.$']
-                if any([regex.match(ex_param) for regex in [re.compile(rex) for rex in regexes]]):
-                    if subloc:
-                        print('sub-locatie {} mag niet linken aan ex_par {}'.format(int_loc,ex_param))
-                elif re.compile('HR.$').match(ex_param):
-                    if hoofdloc:
-                        print('hoofdlocatie {} mag niet linken aan ex_par {}'.format(int_loc,ex_param))
-                
-        
-        
-'''
--	pompvijzel KW9999xx = altijd expar FQx, IxB, IBx, Qx
--	stuw KW9999xx = altijd expar SWx, Qx
--	schuif KW9999xx = altijd expar ESx, SPx (of SSx), Qx
--	vispassage KW9999xx = altijd ESx, SPx (of SSx), Qx
--	debietmeter KW9999xx = altijd Qx
--	krooshek KW9999xx = altijd HBx of HOx
--	waterstand OW9999xx = altijd HBx of HOx
--	stuurpeil HRx = altijd op sublocatie KW9999xx
--	streefpeil HSx = altijd op hoofdlocatie KW9999x0
--	stuurdebiet QRx = altijd op hoofdlocatie KW9999x0 (dus anders dan bij stuurpeil)
--	streefdebiet QSx = altijd op hoofdlocatie KW9999x0
-'''
+            regexes = ['HS.$','QR.$','QS.$']
+            if any([regex.match(ex_param) for regex in [re.compile(rex) for rex in regexes]]):
+                if subloc:
+                    subLocError = ex_param
+            elif re.compile('HR.$').match(ex_param):
+                if hoofdloc:
+                    hoofdLocError = ex_param
+            
+            if not all([elem == None for elem in [exParError,subLocError,hoofdLocError]]):
+                param_consistency['internalLocation'].append(int_loc)
+                param_consistency['exParError'].append(exParError)
+                param_consistency['subLocError'].append(subLocError)
+                param_consistency['hoofdlocError'].append(hoofdLocError)
+                param_consistency['types'].append(','.join(all_types))
+            
+config_df['exPar & intLoc mismatch'] = pd.DataFrame(param_consistency)
+summary['ExParameters & intLocations mismatch'] = len(config_df['exPar & intLoc mismatch'])
+if len(param_consistency['internalLocation']) == 0:
+  logging.info('externe parameters matchen logisch bij interne locaties')
+else:
+  logging.warning('{} externe parameters passen niet bij locatie-type'.format(len(config_df['exPar & intLoc mismatch'])))                    
+
 #%% wegschrijven naar excel
     
 #lees input xlsx en gooi alles weg behalve de fixed_sheets

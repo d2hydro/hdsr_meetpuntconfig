@@ -34,10 +34,9 @@ In het geval je deze omgeving weer wilt verwijderen van je machine kan dit via d
 
 In het geval je deze omgeving wilt updaten met een nieuwe yml-file:
 
-*conda activate caw*
 *conda env update -f environment.yml*
 
-## Configuratie scripts
+## Voorbereiden configuratie
 Het bestand *config\config_example.ini* staat een voorbeeld bestand met variabelen die worden ingelezen door de scripts. Pas dit bestand aan met de volgende stappen:
 1. hernoem/kopieer *config\config_example.ini* naar *config\config.ini*
 1. zet alle paden in de sectie *[paden]* goed
