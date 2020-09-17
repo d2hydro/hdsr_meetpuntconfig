@@ -32,7 +32,8 @@ warning_sheets = ['histTags_noMatch',
                   'dubbele idmaps',
                   'idmap v sectie',
                   'exPar error',
-                  'exPar missing']
+                  'exPar missing',
+                  'intLoc missing']
 
 idmap_files = ['IdOPVLWATER',
               'IdOPVLWATER_HYMOS',
@@ -279,17 +280,17 @@ hoofdloc_gdf = config.get_locations('OPVLWATER_HOOFDLOC')
 subloc_gdf = config.get_locations('OPVLWATER_SUBLOC')
 waterstand_gdf = config.get_locations('OPVLWATER_WATERSTANDEN_AUTO')
 
-ex_par_errors = dict.fromkeys(['internalLocation',
-                              'exParError',
-                              'types'],[])
+ex_par_errors = {'internalLocation':[],
+                 'exParError':[],
+                 'types':[]}
 
-ex_par_missing = dict.fromkeys(['internalLocation',
-                                'exPars',
-                                'IB',
-                                'FQ',
-                                'QR',
-                                'QS',
-                                'HS'],[])
+ex_par_missing = {'internalLocation':[],
+                  'exPars':[],
+                  'IB':[],
+                  'FQ':[],
+                  'QR':[],
+                  'QS':[],
+                  'HS':[]}
 
 int_loc_missing = []
 
