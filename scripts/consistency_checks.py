@@ -28,7 +28,12 @@ import re
 #%% instellingen
 # layout excel spreadsheet
 fixed_sheets = ['histTag_ignore','inhoudsopgave']
-warning_sheets = ['histTags_noMatch','dubbele idmaps','idmap v sectie','exPar & intLoc mismatch']
+warning_sheets = ['histTags_noMatch',
+                  'dubbele idmaps',
+                  'idmap v sectie',
+                  'exPar error',
+                  'exPar missing']
+
 idmap_files = ['IdOPVLWATER',
               'IdOPVLWATER_HYMOS',
               'IdHDSR_NSC',
@@ -268,109 +273,133 @@ else:
     config_df['params_missing'] =  pd.DataFrame({'parameters': params_missing})
     config_df['params_missing'] = config_df['params_missing'].set_index('parameters')
 
-#%% consistentie externe parameters met interne parameters/locaties:
-# location_sets = list(config.locationSets.keys())
+#%% consistentie externe parameters met interne parameters/locaties
+logging.info('controle foutieve en missende ex-parameters & niet opgenomen inlocs')
 hoofdloc_gdf = config.get_locations('OPVLWATER_HOOFDLOC')
 subloc_gdf = config.get_locations('OPVLWATER_SUBLOC')
 waterstand_gdf = config.get_locations('OPVLWATER_WATERSTANDEN_AUTO')
 
-param_consistency = {'internalLocation':[],
-                     'intLocMissing':[],
-                     'statusMissing':[],
-                     'FQMissing':[],
-                     'HSMissing':[],
-                     'QRMissing':[],
-                     'QSMissing':[],
-                     'exParError':[],
-                     'types':[]}
+ex_par_errors = dict.fromkeys(['internalLocation',
+                              'exParError',
+                              'types'],[])
 
+ex_par_missing = dict.fromkeys(['internalLocation',
+                                'exPars',
+                                'IB',
+                                'FQ',
+                                'QR',
+                                'QS',
+                                'HS'],[])
+
+int_loc_missing = []
+
+#maak een data-frame zodat we kunnen groeperen bij internalLocation
 idmap_df = pd.DataFrame.from_dict(idmap_dict['IdOPVLWATER'])
+
 for loc_group in idmap_df.groupby('internalLocation'):
-    #loc_group = list(idmap_df.groupby('internalLocation'))[1]
-    loc_properties = all_types = None
-    hoofdloc = subloc = waterstandloc = False
-    status_missing = fq_missing = int_loc_missing = False
-    has_hsx = has_qrx = has_qsx = True
-    regexes = []
+    
+    #initieer een aantal variabelen
+    missings = dict.fromkeys(['IB','FQ','QR','QS','HS'],False)
+    
+    #interne locatie en externe parameters opvragen
     int_loc = loc_group[0]
     ex_pars = np.unique(loc_group[1]['externalParameter'].values)
+    ex_pars_gen = [re.sub("\d", ".", ex_par) for ex_par in ex_pars]
     
-    #vaststellen loctype
-    if int_loc[-1] == '0':
+    #vaststellen locatie-type
+    if int_loc in hoofdloc_gdf['LOC_ID'].values:
         loc_properties = hoofdloc_gdf[hoofdloc_gdf['LOC_ID'] == int_loc]
-        hoofdloc = True
+        loc_type = 'hoofdloc'
     elif int_loc in subloc_gdf['LOC_ID'].values:
         loc_properties = subloc_gdf[subloc_gdf['LOC_ID'] == int_loc]
-        subloc = True
+        loc_type = 'subloc'
         regexes = ['HR.$']
     elif int_loc in waterstand_gdf['LOC_ID'].values:
-        waterstandloc = True
+        loc_type = 'waterstand'
     else:
-       int_loc_missing = True
+        loc_type = None
+        int_loc_missing += [int_loc]
     
-    #vaststellen sub-typen
-    if hoofdloc | subloc | waterstandloc:
-        if hoofdloc | subloc:
-            all_types = loc_properties['ALLE_TYPES'].values[0].split("/")
-            all_types = [item.lower() for item in all_types]
-        elif waterstandloc:
-            all_types = ['waterstand']
+    #vaststellen object_typen
+    if loc_type in ['hoofdloc', 'subloc']:
+        all_types = loc_properties['ALLE_TYPES'].values[0].split("/")
+        all_types = [item.lower() for item in all_types]
+    elif loc_type == 'waterstand':
+        all_types = ['waterstand']
     
-        #kijken of alle ex-parameters horen bij de typen
-        ex_par_error = []
-        if subloc:
-            regexes += [j for i in
-                        [values for keys, values in expars_allowed.items() if keys in all_types]
-                        for j in i]
-            regexes += list(dict.fromkeys(regexes))
+    if loc_type == 'subloc':
+        
+        #zoeken naar foutief toegekende ex_pars
+        regexes += [j for i in
+                    [values for keys, values in expars_allowed.items() if keys in all_types]
+                    for j in i]
+        regexes += list(dict.fromkeys(regexes))
+        
+        ex_par_error = [ex_par for ex_par in ex_pars if not any([regex.match(ex_par) for regex in [re.compile(rex) for rex in regexes]])]
+         
+        # als wel/niet I.B dan ook wel/niet IB.
+        if not ('I.B' in ex_pars_gen) == ('IB.' in ex_pars_gen):
+            missings['IB'] = True
+        
+        # als er I.B of IB., dan verwacht je ook FQ.
+        if (('I.B' in ex_pars_gen) | ('IB.' in ex_pars_gen)) & (not 'FQ.' in ex_pars_gen):
+            missings['FQ'] = True
             
-            ex_par_error = [ex_par for ex_par in ex_pars if not any([regex.match(ex_par) for regex in [re.compile(rex) for rex in regexes]])]
-                           
-            #kijken of er een I.B en IB. voorkomen in combinatie
-            has_ixb = any([bool(re.match('I.B$',ex_par)) for ex_par in ex_pars])
-            has_ibx = any([bool(re.match('IB.$',ex_par)) for ex_par in ex_pars])
-            if not has_ibx == has_ixb:
-                status_missing = True
-             
-            #kijken of er tevens een FQ. voorkomt
-            has_fq = any([bool(re.match('FQ.$',ex_par)) for ex_par in ex_pars])
-            if has_fq and not has_ixb | has_ibx:
-                fq_missing = True
                 
-        elif hoofdloc:
-            has_hsx = any([bool(re.match('HS.$',ex_par)) for ex_par in ex_pars])
-            has_qrx = any([bool(re.match('QR.$',ex_par)) for ex_par in ex_pars])
-            has_qsx = any([bool(re.match('QS.$',ex_par)) for ex_par in ex_pars])
+    elif loc_type == 'hoofdloc':
+        
+        #zoeken naar foutief toegekende ex_pars
+        regexes = ['HS.$', 'QR.$', 'QS.$']
+        
+        ex_par_error = [ex_par for ex_par in ex_pars if not any([regex.match(ex_par) for regex in [re.compile(rex) for rex in regexes]])]
+        
+        #is er een HS?
+        if not ('HS.' in ex_pars_gen):
+            missings['HS'] = True
             
-    # rapporteren fouten
-    
-    if any([int_loc_missing,
-            (len(ex_par_error) > 0), 
-            status_missing,
-            fq_missing,
-            not has_hsx,
-            not has_qrx,
-            not has_qsx]):
-        param_consistency['internalLocation'].append(int_loc)
-        param_consistency['intLocMissing'].append(int_loc_missing)
-        param_consistency['statusMissing'].append(status_missing)
-        param_consistency['FQMissing'].append(fq_missing)
-        param_consistency['exParError'].append(','.join(ex_par_error))
-        if all_types:
-            param_consistency['types'].append(','.join(all_types))
-        else:
-            param_consistency['types'].append('')
-        param_consistency['HSMissing'].append(not has_hsx)
-        param_consistency['QRMissing'].append(not has_qrx)
-        param_consistency['QSMissing'].append(not has_qsx)
+        if not ('QR.' in ex_pars_gen):
+            missings['QR'] = True
+            
+        if not ('QS.' in ex_pars_gen):
+            missings['QS'] = True
+            
+    else:
+        ex_par_error = []
+        
+    # rapporteren expar_errors
+    if len(ex_par_error) > 0:
+        ex_par_errors['internalLocation'].append(int_loc)
+        ex_par_errors['exParError'].append(','.join(ex_par_error))
+        ex_par_errors['types'].append(','.join(all_types))
+        
+    # rapporteren missings
+    if any(missings.values()):
+        ex_par_missing['internalLocation'].append(int_loc)
+        ex_par_missing['exPars'].append(','.join(ex_pars))
+        for key, value in missings.items():
+            ex_par_missing[key].append(value)
 
-config_df['exPar & intLoc mismatch'] = pd.DataFrame(param_consistency)
-summary['ExParameters & intLocations mismatch'] = len(config_df['exPar & intLoc mismatch'])
-if len(param_consistency['internalLocation']) == 0:
-  logging.info('externe parameters matchen logisch bij interne locaties')
+#opname in data-frame           
+config_df['exPar error'] = pd.DataFrame(ex_par_errors)
+config_df['exPar missing'] = pd.DataFrame(ex_par_missing)
+config_df['intLoc missing'] = pd.DataFrame({'internalLocation':int_loc_missing})
+
+#opname in samenvatting
+summary['ExPar errors'] = len(config_df['exPar error'])
+summary['ExPar missing'] = len(config_df['exPar missing'])
+summary['IntLoc missing'] = len(config_df['intLoc missing'])
+
+#loggen van resultaat
+for item in ['ExPar errors', 'ExPar missing']:
+    if summary[item] == 0:
+        logging.info('geen {}'.format(item))
+    else:
+      logging.warning('{} locaties met {}'.format(summary[item],item))
+      
+if summary['IntLoc missing'] == 0:
+    logging.info('alle interne locaties uit idmap opgenomen in locationSets')
 else:
-  logging.warning('{} locaties met onlogische externe parameters'.format(len(config_df['exPar & intLoc mismatch'])))                    
-    
+    logging.warning('{} interne locaties niet opgenomen in locationSets'.format(summary['IntLoc missing']))                    
 
 #%% wegschrijven naar excel
     
