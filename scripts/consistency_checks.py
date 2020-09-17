@@ -33,7 +33,8 @@ warning_sheets = ['histTags_noMatch',
                   'idmap v sectie',
                   'exPar error',
                   'exPar missing',
-                  'intLoc missing']
+                  'intLoc missing',
+                  'exLoc error']
 
 idmap_files = ['IdOPVLWATER',
               'IdOPVLWATER_HYMOS',
@@ -302,7 +303,7 @@ for loc_group in idmap_df.groupby('internalLocation'):
     #initieer een aantal variabelen
     missings = dict.fromkeys(['IB','FQ','QR','QS','HS'],False)
     
-    #interne locatie en externe parameters opvragen
+    #interne locatie en externe parameters
     int_loc = loc_group[0]
     ex_pars = np.unique(loc_group[1]['externalParameter'].values)
     ex_pars_gen = [re.sub("\d", ".", ex_par) for ex_par in ex_pars]
@@ -366,7 +367,7 @@ for loc_group in idmap_df.groupby('internalLocation'):
             
     else:
         ex_par_error = []
-        
+            
     # rapporteren expar_errors
     if len(ex_par_error) > 0:
         ex_par_errors['internalLocation'].append(int_loc)
@@ -401,6 +402,52 @@ if summary['IntLoc missing'] == 0:
     logging.info('alle interne locaties uit idmap opgenomen in locationSets')
 else:
     logging.warning('{} interne locaties niet opgenomen in locationSets'.format(summary['IntLoc missing']))                    
+
+#%% zoeken naar ex-loc errors
+logging.info('controle externe locaties')
+ex_loc_errors = {'internalLocation':[],
+                 'externalLocation':[]}
+
+for loc_group in idmap_df.groupby('externalLocation'):
+
+    #initialiseren int_loc_error
+    int_loc_error = []
+    
+    #zoeken naar ex-loc errors
+    ex_loc = loc_group[0]
+    int_locs = np.unique(loc_group[1]['internalLocation'].values)
+    
+    # als lengte van ex-loc == 3, dan KW/OW..{ex-loc}..
+    if len(ex_loc) == 3:
+        int_loc_error = [int_loc for int_loc in int_locs if 
+                         not bool(re.match(f'...{ex_loc}..$',int_loc))]
+    
+    # als lengte ex-loc == 4 en niet KW/OW.8..
+    if len(ex_loc) == 4:
+        
+        # de default-case
+        if not bool(re.match('.8..$',ex_loc)):
+            int_loc_error += [int_loc for int_loc in int_locs if 
+                              not bool(re.match(f'..{ex_loc}..$',int_loc))]
+        
+        # opgesplitste locaties; ex-loc altijd naar 1 unieke hoofdlocatie + sublocaties
+        elif bool(re.match('18..$',ex_loc)):
+            if not len(np.unique([int_loc[2:-1] for int_loc in int_locs])) == 1:
+                int_loc_error += list(int_locs)
+            
+    for int_loc in int_loc_error:
+        ex_loc_errors['internalLocation'].append(int_loc)
+        ex_loc_errors['externalLocation'].append(ex_loc)
+
+config_df['exLoc error'] = pd.DataFrame(ex_loc_errors)
+
+summary['exLoc error'] = len(config_df['exLoc error'])
+
+if summary['exLoc error'] == 0:
+    logging.info('alle externe locaties consistent met interne locaties')
+else:
+    logging.warning('{} externe locaties onlogisch bij interne locaties'.format(summary['exLoc error']))                    
+
 
 #%% wegschrijven naar excel
     
