@@ -13,3 +13,4 @@ data/mpt_startenddate_total_pixml_transferdb_ignore.csv
 config/config_example.ini.bak
 data/csv/oppvlwater_hoofdloc.csv
 *.csv
+*.bak
