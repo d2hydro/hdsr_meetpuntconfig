@@ -203,12 +203,8 @@ for col in dtype_cols:
         sys.exit()
 
 #%% filteren hist_tags op alles wat niet in ignored staat
-if mpt_ignore:
-   config_df['histTag_ignore'] = pd.read_csv(mpt_ignore,sep=';',header=0)
-#hist_tags_df = hist_tags_df[~hist_tags_df['serie'].isin(config_df['histTag_ignore']['UNKNOWN_SERIE'])]     
+ 
 hist_tags_df['fews_locid'] = hist_tags_df.apply(idmap2tags, axis=1)
-
-#%% wgschrijven his-tags die niet zijn opgenomen in de idmap
 hist_tags_no_match_df = hist_tags_df[hist_tags_df['fews_locid'].isna()]
 hist_tags_no_match_df = hist_tags_no_match_df[~hist_tags_no_match_df['serie'].isin(config_df['histTag_ignore']['UNKNOWN_SERIE'])] 
 hist_tags_no_match_df = hist_tags_no_match_df.drop('fews_locid',axis=1)
@@ -223,6 +219,10 @@ else:
     logging.info('alle histTags zijn opgenomen in idmap')
 
 #%% wegschrijven van ids die ten onrechte in ignore-lijst staan
+if mpt_ignore:
+   config_df['histTag_ignore'] = pd.read_csv(mpt_ignore,sep=';',header=0)
+   
+config_df['histTag_ignore']['UNKNOWN_SERIE'] = config_df['histTag_ignore']['UNKNOWN_SERIE'].str.replace('#','')   
 hist_tags_df = hist_tags_df[hist_tags_df['fews_locid'].notna()]
 hist_tag_ignore_match_df = config_df['histTag_ignore'][config_df['histTag_ignore']['UNKNOWN_SERIE'].isin(hist_tags_df['serie'])]
 hist_tag_ignore_match_df = hist_tag_ignore_match_df.set_index('UNKNOWN_SERIE')
