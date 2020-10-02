@@ -298,13 +298,13 @@ ex_par_errors = {'internalLocation':[],
                  'locationType':[],
                  'exParError':[],
                  'types':[],
-                 'FQ':[]}
+                 'FQ':[],
+                 'I.X':[],
+                 'IX.':[]}
 
 ex_par_missing = {'internalLocation':[],
                   'locationType':[],
                   'exPars':[],
-                  'I.X':[],
-                  'IX.':[],
                   'QR':[],
                   'QS':[],
                   'HS':[]}
@@ -316,8 +316,8 @@ idmap_df = pd.DataFrame.from_dict(idmap_dict['IdOPVLWATER'])
 
 for loc_group in idmap_df.groupby('internalLocation'):
     #initieer een aantal variabelen
-    missings = dict.fromkeys(['I.X','IX.','QR','QS','HS'],False)
-    errors = dict.fromkeys(['FQ'],False)
+    missings = dict.fromkeys(['QR','QS','HS'],False)
+    errors = dict.fromkeys(['I.X','IX.','FQ'],False)
     
     #interne locatie en externe parameters
     int_loc = loc_group[0]
@@ -360,9 +360,9 @@ for loc_group in idmap_df.groupby('internalLocation'):
         # als wel/niet I.B dan ook wel/niet IB.
         if any([ex_par for ex_par in ex_pars_gen if ex_par in ['I.B', 'I.H', 'I.L']]):
             if not any([ex_par for ex_par in ex_pars_gen if ex_par in ['IB.', 'IH.', 'IL.']]):
-                missings['IX.'] = True
+                errors['IX.'] = True
         elif any([ex_par for ex_par in ex_pars_gen if ex_par in ['IB.', 'IH.', 'IL.']]):
-             missings['I.X'] = True
+             errors['I.X'] = True
         
         # Als FQ, dan ook I.B.
         if 'FQ.' in ex_pars_gen: 
@@ -593,6 +593,25 @@ if summary['timeSeries errors'] == 0:
     logging.info('alle tijdseries zijn logisch gekoppeld aan interne locaties/parameters')
 else:
     logging.warning('{} tijdseries missend/onlogisch gekoppeld'.format(summary['exLoc error']))   
+
+#%% controle validationrulesets
+logging.info('controle validationRules')
+
+validation_rules = xml_to_dict(config.RegionConfigFiles['ValidationRuleSets'])['validationRuleSets']['validationRuleSet']
+validation_rules = [rule for rule in validation_rules if 'extremeValuesFunctions' in rule.keys()]
+
+#for validation_rule in validation_rules:
+validation_rule = validation_rules[4]
+location_sets = np.unique([ts['locationSetId'] for ts in validation_rule['timeSeriesSet']])
+
+location_set = location_sets[0]
+config.locationSets[location_set]
+
+hard_max = next(v for (k,v) in validation_rule['extremeValuesFunctions'].items() if k == 'hardMax')
+soft_max = next(v for (k,v) in validation_rule['extremeValuesFunctions'].items() if k == 'softMax')
+hard_min = next(v for (k,v) in validation_rule['extremeValuesFunctions'].items() if k == 'hardMin')
+soft_min = next(v for (k,v) in validation_rule['extremeValuesFunctions'].items() if k == 'softMin')
+
 
 #%% wegschrijven naar excel
     
