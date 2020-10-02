@@ -29,7 +29,8 @@ import re
 # layout excel spreadsheet
 fixed_sheets = ['histTag_ignore',
                 'inhoudsopgave',
-                'exLoc_ignore']
+                'exLoc_ignore',
+                'TS800_ignore']
 
 warning_sheets = ['histTags_noMatch',
                   'dubbele idmaps',
@@ -37,7 +38,8 @@ warning_sheets = ['histTags_noMatch',
                   'exPar error',
                   'exPar missing',
                   'intLoc missing',
-                  'exLoc error']
+                  'exLoc error',
+                  'timeSeries error']
 
 idmap_files = ['IdOPVLWATER',
               'IdOPVLWATER_HYMOS',
@@ -496,68 +498,101 @@ else:
 #%% zoeken naar sub-locaties anders dan krooshek en debietmeter:
 #   - zonder stuurpeil tijdserie
 #   - waarbij meerdere tijdseries met stuurpeilen naar dezelfde interne paramer mappen
+logging.info('controle koppeling tijdseries')
+if 'TS800_ignore' in config_df.keys():
+    ts_ignore_df = config_df['TS800_ignore']
+else:
+    ts_ignore_df = pd.DataFrame({'internalLocation':[],'externalLocation':[]})
 
 idmap_subloc_df = idmap_df[idmap_df['internalLocation'].isin(subloc_gdf['LOC_ID'].values)] # alleen locaties die in de sub-locs locationSet zitten
 idmap_subloc_df['type'] = idmap_subloc_df['internalLocation'].apply((lambda x: subloc_gdf[subloc_gdf['LOC_ID'] == x]['TYPE'].values[0])) #toevoegen van type
 idmap_subloc_df = idmap_subloc_df[~idmap_subloc_df['type'].isin(['krooshek','debietmeter'])] # krooshekken en debietmeters zijn niet relevant
 idmap_subloc_df['loc_groep'] = idmap_subloc_df['internalLocation'].apply((lambda x: x[0:-1]))
 
+ts_errors = {'internalLocation':[],
+             'internalParameters':[],
+             'externalLocations':[],
+             'type':[],
+             'fout':[]
+             }
+
 for loc_group in idmap_subloc_df.groupby('loc_groep'):
-    
+
+    errors = dict.fromkeys(['stuurpeil','tijdseries'],False)
+    int_locs = np.unique(loc_group[1]['internalLocation'].values)
     ex_locs = np.unique(loc_group[1]['externalLocation'])
     
-    #zoeken naar een 8.. locatie, dan is er in ieder geval een unieke groep
-    #ex_loc_group = [ex_loc for ex_loc in ex_locs if bool(re.match('8..$',ex_loc))]
+    #het zoeken naar groepen met externe locaties
+    ex_locs_skip = [str(row[1]['externalLocation'])
+                    for row in ts_ignore_df.iterrows() 
+                    if any([re.match(row[1]['internalLocation'], loc) 
+                            for loc in int_locs])]
     
-    #zoeken naar een .8.. locatie, dan is er in ieder geval (nog) een unieke groep
-    #ex_loc_group += [ex_loc for ex_loc in ex_locs if bool(re.match('.8..$',ex_loc))]
+    #uniek nummer per ex-loc
+    ex_locs_dict = {ex_loc:idx for idx, ex_loc in enumerate(ex_locs)}
     
-    #ex_loc_group_dict = {ex_loc:idx for idx, ex_loc in enumerate(ex_loc_group)}
+    #vinden van 800 nummers
+    split_ts = [key for key in ex_locs_dict.keys() if 
+                  any([regex.match(key) 
+                       for regex in [re.compile(rex) 
+                                     for rex in ['8..','.8..']]])]
     
-    #toevoegen 3 of 4 cijferige ex_locs
-    #ex_locs = [ex_loc for ex_loc in ex_locs if not ex_loc in ex_loc_group]
-    # ex_locs_dict = {ex_loc:idx for idx, ex_loc in enumerate(ex_locs)}
+    split_ts = [key for key in split_ts if not key in ex_locs_skip]
     
-    # ex_locs_dict = {k:(ex_locs_dict[k[1:]] 
-    #                    if k[1:] in ex_locs_dict.keys() 
-    #                    else v) for (k,v) in ex_locs_dict.items()}
+    ex_locs_dict = {k:(ex_locs_dict[k[1:]] 
+                        if (k[1:] in ex_locs_dict.keys()) and (not k in split_ts) 
+                        else v) for (k,v) in ex_locs_dict.items()}
     
-    # ex_loc_group_dict = {}
-    # for ex_loc in ex_locs:
-    #     if ex_loc[1:] in ex_locs:   #dit is een 4-cijferige ex-loc die hoort bij een 3-cijferige ex_loc
-    #         if ex_loc[1:] in ex_loc_group_dict.keys():
-    #             ex_loc_group_dict[ex_loc] = ex_loc_group_dict[ex_loc[1:]]
-    #         else:
-    #             ex_loc_group_dict[ex_loc] = len(ex_loc_group_dict.values())
-    #     elif any([bool(re.match(f'.{ex_loc}$',loc)) for loc in ex_locs]): #dit is een 3-cijferige ex-loc die hoort bij een 4-cijferige ex_loc
-    #         match_loc = [loc for loc in ex_locs if bool(re.match(f'.{ex_loc}$',loc))][0]
-    #         if match_loc in ex_loc_group_dict.keys():
-    #             ex_loc_group_dict[ex_loc] = ex_loc_group_dict[match_loc]
-    #         else:
-    #             ex_loc_group_dict[ex_loc] = len(ex_loc_group_dict.values())
-    #     else: # het gaat om een unieke locatie die verder niet voorkomt
-    #         ex_loc_group_dict[ex_loc] = len(ex_loc_group_dict.values()) 
-                
+    org_uniques = np.unique([val for key,val in ex_locs_dict.items() if not key in split_ts])
     
-    # loc_group[1]['ex_loc_group'] = loc_group[1]['externalLocation'].apply((lambda x: ex_locs_dict[x]))
-    # time_series = loc_group[1].groupby(['ex_loc_group','externalParameter'])
+    # als er maar 1 groep zit in split_ts én een groep in de originele tijdseriegroepen, dan samenvoegen
+    if (len(org_uniques) == 1) & (len(split_ts) == 1):
+        ex_locs_dict = {k:(org_uniques[0] if k in split_ts else v) for (k,v) in ex_locs_dict.items()}
+               
+    loc_group[1]['ex_loc_group'] = loc_group[1]['externalLocation'].apply((lambda x: ex_locs_dict[x]))
+    time_series = loc_group[1].groupby(['ex_loc_group','externalParameter'])
        
-    # if len(loc_group[1].groupby('internalLocation')) == 1:
-    #     int_loc = list(loc_group[1].groupby('internalLocation'))[0][0]
-    #     loc_type = list(loc_group[1].groupby('type'))[0][0]
-    #     sp_series = [series for series in time_series if bool(re.match('HR.',series[0][1]))]
-    #     unique, counts = np.unique([np.unique(series[1]['internalParameter']) for series in sp_series],return_counts=True)
-    #     sp_params = dict(zip(unique, counts)) 
-    #     for series in sp_series:
-    #         params = np.unique(series[1]['internalParameter'])
-    #         if len(params) > 1:
-    #             logging.error(f'interne locatie {int_loc} heeft dezelfde tijdreeks gekoppeld aan interne parameters {",".join(params)}')
-    #         elif sp_params[params[0]] > 1:
-    #             logging.error(f"interne locatie {int_loc} heeft naast tijdreeks met exLoc {','.join(np.unique(series[1]['externalLocation']))} en exPar {series[0][1]}"
-    #                           f" nog een andere reeks gekoppeld aan {params[0]}")
+    if len(loc_group[1].groupby('internalLocation')) == 1:
+        int_loc = list(loc_group[1].groupby('internalLocation'))[0][0]
+        loc_type = list(loc_group[1].groupby('type'))[0][0]
+        sp_series = [series for series in time_series if bool(re.match('HR.',series[0][1]))]
+        unique, counts = np.unique([np.unique(series[1]['internalParameter']) for series in sp_series],return_counts=True)
+        sp_params = dict(zip(unique, counts)) 
+        for series in sp_series:
+            params = np.unique(series[1]['internalParameter'])
+            if len(params) > 1:
+                errors['tijdseries'] = f"dezelfde reeks gekoppeld aan parameters {','.join(params)}"
+                #logging.error(f'interne locatie {int_loc} heeft dezelfde tijdreeks gekoppeld aan interne parameters {",".join(params)}')
+            elif sp_params[params[0]] > 1:
+                errors['tijdseries'] = f"naast exLoc {','.join(np.unique(series[1]['externalLocation']))} en exPar {series[0][1]} nog andere reeks gekoppeld"
+                #logging.error(f"interne locatie {int_loc} heeft naast tijdreeks met exLoc {','.join(np.unique(series[1]['externalLocation']))} en exPar {series[0][1]}"
+                #              f" nog een andere reeks gekoppeld aan {params[0]}")
+            if errors['tijdseries']:
+                ts_errors['internalLocation'].append(int_loc)
+                ts_errors['internalParameters'].append(",".join(params))
+                ts_errors['externalLocations'].append(','.join(np.unique(series[1]['externalLocation'])))
+                ts_errors['type'].append(loc_type)
+                ts_errors['fout'].append(errors['tijdseries'])
                 
-    # if not any([bool(re.match('HR.',series[0][1])) for series in time_series]):
-    #     logging.error(f'interne locatie {int_loc} van type {loc_type} heeft geen stuurpeil')
+    if not any([bool(re.match('HR.',series[0][1])) for series in time_series]):
+        errors['stuurpeil'] = 'missend stuurpeil'
+        #logging.error(f'interne locatie {int_loc} van type {loc_type} heeft geen stuurpeil')
+        if errors['stuurpeil']:
+            ts_errors['internalLocation'].append(int_loc)
+            ts_errors['internalParameters'].append(",".join(params))
+            ts_errors['externalLocations'].append(','.join(np.unique(series[1]['externalLocation'])))
+            ts_errors['type'].append(loc_type)
+            ts_errors['fout'].append('missend stuurpeil')
+        
+config_df['timeSeries error'] = pd.DataFrame(ts_errors)
+
+#opname in samenvatting
+summary['timeSeries errors'] = len(config_df['timeSeries error'])
+
+if summary['timeSeries errors'] == 0:
+    logging.info('alle tijdseries zijn logisch gekoppeld aan interne locaties/parameters')
+else:
+    logging.warning('{} tijdseries missend/onlogisch gekoppeld'.format(summary['exLoc error']))   
 
 #%% wegschrijven naar excel
     
