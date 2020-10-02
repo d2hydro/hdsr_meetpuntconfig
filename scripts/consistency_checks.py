@@ -33,6 +33,7 @@ fixed_sheets = ['histTag_ignore',
                 'TS800_ignore']
 
 warning_sheets = ['histTags_noMatch',
+                  'histTags_ignore_match',
                   'dubbele idmaps',
                   'idmap v sectie',
                   'exPar error',
@@ -201,15 +202,15 @@ for col in dtype_cols:
                       " naar np.datetime64 formaat. Controleer of deze datums realistisch zijn.")
         sys.exit()
 
-#%%
-#filteren hist_tags op alles wat niet in ignored staat
+#%% filteren hist_tags op alles wat niet in ignored staat
 if mpt_ignore:
    config_df['histTag_ignore'] = pd.read_csv(mpt_ignore,sep=';',header=0)
-hist_tags_df = hist_tags_df[~hist_tags_df['serie'].isin(config_df['histTag_ignore']['UNKNOWN_SERIE'])]     
+#hist_tags_df = hist_tags_df[~hist_tags_df['serie'].isin(config_df['histTag_ignore']['UNKNOWN_SERIE'])]     
 hist_tags_df['fews_locid'] = hist_tags_df.apply(idmap2tags, axis=1)
 
-# wegschrijven his-tags die niet zijn opgenomen in de idmap
+#%% wgschrijven his-tags die niet zijn opgenomen in de idmap
 hist_tags_no_match_df = hist_tags_df[hist_tags_df['fews_locid'].isna()]
+hist_tags_no_match_df = hist_tags_no_match_df[~hist_tags_no_match_df['serie'].isin(config_df['histTag_ignore']['UNKNOWN_SERIE'])] 
 hist_tags_no_match_df = hist_tags_no_match_df.drop('fews_locid',axis=1)
 hist_tags_no_match_df.columns = ['UNKNOWN_SERIE','STARTDATE','ENDDATE']
 hist_tags_no_match_df = hist_tags_no_match_df.set_index('UNKNOWN_SERIE')
@@ -221,9 +222,19 @@ if not config_df['histTags_noMatch'].empty:
 else:
     logging.info('alle histTags zijn opgenomen in idmap')
 
+#%% wegschrijven van ids die ten onrechte in ignore-lijst staan
+hist_tags_df = hist_tags_df[hist_tags_df['fews_locid'].notna()]
+hist_tag_ignore_match_df = config_df['histTag_ignore'][config_df['histTag_ignore']['UNKNOWN_SERIE'].isin(hist_tags_df['serie'])]
+hist_tag_ignore_match_df = hist_tag_ignore_match_df.set_index('UNKNOWN_SERIE')
+config_df['histTags_ignore_match'] = hist_tag_ignore_match_df
+
+if not config_df['histTags_ignore_match'].empty:
+    logging.warning('{} histTags zijn ten onrechte opgenomen in histTag ignore'.format(len(config_df['histTags_ignore_match'])))
+else:
+    logging.info('geen histTags ten onrechte in ignore')
+
 #%% aanmaken van mpt_df vanuit de fews_locid lijsten in hist_tags_df
 logging.info('omzetten van histTags naar meetpunten')
-hist_tags_df = hist_tags_df[hist_tags_df['fews_locid'].notna()]
 mpt_hist_tags_df = hist_tags_df.explode('fews_locid').reset_index(drop=True)
 
 # bepalen minimale start en maximale eindtijd per fews_locid. 
@@ -575,6 +586,7 @@ for loc_group in idmap_subloc_df.groupby('loc_groep'):
                 ts_errors['fout'].append(errors['tijdseries'])
                 
     if not any([bool(re.match('HR.',series[0][1])) for series in time_series]):
+        ''' MOET BETER ''' 
         errors['stuurpeil'] = 'missend stuurpeil'
         #logging.error(f'interne locatie {int_loc} van type {loc_type} heeft geen stuurpeil')
         if errors['stuurpeil']:
