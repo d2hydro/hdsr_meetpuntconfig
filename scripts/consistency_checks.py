@@ -25,6 +25,8 @@ import sys
 import shutil
 import re
 
+pd.options.mode.chained_assignment = None
+
 #%% instellingen
 # layout excel spreadsheet
 fixed_sheets = ['histTag_ignore',
@@ -70,12 +72,12 @@ expars_allowed = {'pompvijzel': ['FQ.$', 'I.B$', 'IB.$', 'I.H$', 'IH.$', 'I.L$',
                   'waterstand': ['HB.$', 'HO.$', 'H$']}
 
 #%% functies
-def idmap2tags(row):
+def idmap2tags(row,idmap):
     '''functie voor het toevoegen van fews-locatie-ids aan de hist_tags data-frame in de apply-method'''
      
     exloc, expar = row['serie'].split('_',1)
     fews_locs = [col['internalLocation'] 
-                   for col in idmap_total 
+                   for col in idmap
                    if col['externalLocation'] == exloc 
                    and col['externalParameter'] == expar]
     
@@ -192,19 +194,19 @@ for idmap, idmap_subsecs in idmap_sections.items():
 #%% inlezen hist tags & ignore lijst
 logging.info('zoeken naar missende histTags in idmaps')
 dtype_cols = ['total_min_start_dt', 'total_max_end_dt']
-hist_tags_df = pd.read_csv(hist_tags_csv,
+hist_tags_org_df = pd.read_csv(hist_tags_csv,
                            parse_dates = dtype_cols,
                            sep = ';')
 
 for col in dtype_cols:
-    if not pd.api.types.is_datetime64_dtype(hist_tags_df[col]):
+    if not pd.api.types.is_datetime64_dtype(hist_tags_org_df[col]):
         logging.error(f"kolom '{col}' in '{hist_tags_csv}' kan niet worden geconverteerd"
                       " naar np.datetime64 formaat. Controleer of deze datums realistisch zijn.")
         sys.exit()
 
 #%% filteren hist_tags op alles wat niet in ignored staat
- 
-hist_tags_df['fews_locid'] = hist_tags_df.apply(idmap2tags, axis=1)
+hist_tags_df = hist_tags_org_df.copy()
+hist_tags_df['fews_locid'] = hist_tags_org_df.apply(idmap2tags, args=[idmap_total], axis=1)
 hist_tags_no_match_df = hist_tags_df[hist_tags_df['fews_locid'].isna()]
 hist_tags_no_match_df = hist_tags_no_match_df[~hist_tags_no_match_df['serie'].isin(config_df['histTag_ignore']['UNKNOWN_SERIE'])] 
 hist_tags_no_match_df = hist_tags_no_match_df.drop('fews_locid',axis=1)
@@ -220,11 +222,12 @@ else:
 
 #%% wegschrijven van ids die ten onrechte in ignore-lijst staan
 if mpt_ignore:
-   config_df['histTag_ignore'] = pd.read_csv(mpt_ignore,sep=';',header=0)
-   
+   config_df['histTag_ignore'] = pd.read_csv(mpt_ignore,sep=';',header=0)  
 config_df['histTag_ignore']['UNKNOWN_SERIE'] = config_df['histTag_ignore']['UNKNOWN_SERIE'].str.replace('#','')   
-hist_tags_df = hist_tags_df[hist_tags_df['fews_locid'].notna()]
-hist_tag_ignore_match_df = config_df['histTag_ignore'][config_df['histTag_ignore']['UNKNOWN_SERIE'].isin(hist_tags_df['serie'])]
+hist_tags_opvlwater_df = hist_tags_org_df.copy()
+hist_tags_opvlwater_df['fews_locid'] = hist_tags_org_df.apply(idmap2tags, args=[idmap_total], axis=1)
+hist_tags_opvlwater_df = hist_tags_opvlwater_df[hist_tags_opvlwater_df['fews_locid'].notna()]
+hist_tag_ignore_match_df = config_df['histTag_ignore'][config_df['histTag_ignore']['UNKNOWN_SERIE'].isin(hist_tags_opvlwater_df['serie'])]
 hist_tag_ignore_match_df = hist_tag_ignore_match_df.set_index('UNKNOWN_SERIE')
 config_df['histTags_ignore_match'] = hist_tag_ignore_match_df
 
@@ -235,6 +238,7 @@ else:
 
 #%% aanmaken van mpt_df vanuit de fews_locid lijsten in hist_tags_df
 logging.info('omzetten van histTags naar meetpunten')
+hist_tags_df = hist_tags_df[hist_tags_df['fews_locid'].notna()]
 mpt_hist_tags_df = hist_tags_df.explode('fews_locid').reset_index(drop=True)
 
 # bepalen minimale start en maximale eindtijd per fews_locid. 
@@ -515,8 +519,11 @@ if 'TS800_ignore' in config_df.keys():
 else:
     ts_ignore_df = pd.DataFrame({'internalLocation':[],'externalLocation':[]})
 
+#%%
 idmap_subloc_df = idmap_df[idmap_df['internalLocation'].isin(subloc_gdf['LOC_ID'].values)] # alleen locaties die in de sub-locs locationSet zitten
 idmap_subloc_df['type'] = idmap_subloc_df['internalLocation'].apply((lambda x: subloc_gdf[subloc_gdf['LOC_ID'] == x]['TYPE'].values[0])) #toevoegen van type
+
+#%%
 idmap_subloc_df = idmap_subloc_df[~idmap_subloc_df['type'].isin(['krooshek','debietmeter'])] # krooshekken en debietmeters zijn niet relevant
 idmap_subloc_df['loc_groep'] = idmap_subloc_df['internalLocation'].apply((lambda x: x[0:-1]))
 
