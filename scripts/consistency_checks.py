@@ -225,7 +225,7 @@ if mpt_ignore:
    config_df['histTag_ignore'] = pd.read_csv(mpt_ignore,sep=';',header=0)  
 config_df['histTag_ignore']['UNKNOWN_SERIE'] = config_df['histTag_ignore']['UNKNOWN_SERIE'].str.replace('#','')   
 hist_tags_opvlwater_df = hist_tags_org_df.copy()
-hist_tags_opvlwater_df['fews_locid'] = hist_tags_org_df.apply(idmap2tags, args=[idmap_total], axis=1)
+hist_tags_opvlwater_df['fews_locid'] = hist_tags_org_df.apply(idmap2tags, args=[idmap_dict['IdOPVLWATER']], axis=1)
 hist_tags_opvlwater_df = hist_tags_opvlwater_df[hist_tags_opvlwater_df['fews_locid'].notna()]
 hist_tag_ignore_match_df = config_df['histTag_ignore'][config_df['histTag_ignore']['UNKNOWN_SERIE'].isin(hist_tags_opvlwater_df['serie'])]
 hist_tag_ignore_match_df = hist_tag_ignore_match_df.set_index('UNKNOWN_SERIE')
