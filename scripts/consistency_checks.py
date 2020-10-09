@@ -133,6 +133,8 @@ for idx, path in enumerate(paths):
         else:
             logging.error(f'{path} bestaat niet. Specificeer het juiste path in config.ini')
             sys.exit()
+            
+
 
 #%% inlezen config-excel
 # kopieeren van consistency workbook naar output
@@ -155,7 +157,13 @@ config = Config(fews_config)
 idmap_dict = {idmap:xml_to_dict(config.IdMapFiles[idmap])['idMap']['map'] 
            for idmap in idmap_files}
 idmap_total = [j for i in idmap_dict.values() for j in i]
-    
+
+#%% inlezen locationSets locationSets
+
+location_sets = {location_set:{'id':ini_config['locationSets'][location_set],
+                               'gdf':config.get_locations(ini_config['locationSets'][location_set])} 
+                 for location_set in ini_config['locationSets']}
+   
 #%% controle op KW/OW
 logging.info('controle op KW/OW locaties in juiste sectie')
 config_df['idmap v sectie'] = pd.DataFrame(columns=['bestand',
@@ -621,44 +629,7 @@ for loc_group, group_df in idmap_subloc_df.groupby('loc_groep'):
                         ts_errors['externalLocations'].append(','.join(ex_locs))
                         ts_errors['type'].append(loc_type)
                         ts_errors['fout'].append(f'{",".join(conflicting_pars)} gekoppeld aan sp-serie (exPar: {ex_par}, exLoc(s)): {",".join(ex_locs)}')
-                        
-                    
-            
-            
-#     if len(group_df.groupby('internalLocation')) == 1:
-#         int_loc = list(group_df.groupby('internalLocation'))[0][0]
-#         loc_type = list(group_df.groupby('type'))[0][0]
-#         sp_series = [series for series in time_series if bool(re.match('HR.',series[0][1]))]
-#         unique, counts = np.unique([np.unique(series[1]['internalParameter']) for series in sp_series],return_counts=True)
-#         sp_params = dict(zip(unique, counts)) 
-#         for series in sp_series:
-#             params = np.unique(series[1]['internalParameter'])
-#             if len(params) > 1:
-#                 errors['tijdseries'] = f"dezelfde reeks gekoppeld aan parameters {','.join(params)}"
-#                 #logging.error(f'interne locatie {int_loc} heeft dezelfde tijdreeks gekoppeld aan interne parameters {",".join(params)}')
-#             elif sp_params[params[0]] > 1:
-#                 errors['tijdseries'] = f"naast exLoc {','.join(np.unique(series[1]['externalLocation']))} en exPar {series[0][1]} nog andere reeks gekoppeld"
-#                 #logging.error(f"interne locatie {int_loc} heeft naast tijdreeks met exLoc {','.join(np.unique(series[1]['externalLocation']))} en exPar {series[0][1]}"
-#                 #              f" nog een andere reeks gekoppeld aan {params[0]}")
-#             if errors['tijdseries']:
-#                 ts_errors['internalLocation'].append(int_loc)
-#                 ts_errors['internalParameters'].append(",".join(int_pars))
-#                 ts_errors['externalParameters'].append(",".join(ex_pars))
-#                 ts_errors['externalLocations'].append(','.join(np.unique(series[1]['externalLocation'])))
-#                 ts_errors['type'].append(loc_type)
-#                 ts_errors['fout'].append(errors['tijdseries'])
-                
-#     if not any([bool(re.match('HR.',ex_par)) for ex_par in ex_pars]):
-#         errors['stuurpeil'] = 'missend stuurpeil'
-#         #logging.error(f'interne locatie {int_loc} van type {loc_type} heeft geen stuurpeil')
-#         if errors['stuurpeil']:
-#             ts_errors['internalLocation'].append(int_loc)
-#             ts_errors['internalParameters'].append(",".join(int_pars))
-#             ts_errors['externalParameters'].append(",".join(ex_pars))
-#             ts_errors['externalLocations'].append(','.join(np.unique(series[1]['externalLocation'])))
-#             ts_errors['type'].append(loc_type)
-#             ts_errors['fout'].append('missend stuurpeil')
-        
+                               
 config_df['timeSeries error'] = pd.DataFrame(ts_errors)
 
 #opname in samenvatting
