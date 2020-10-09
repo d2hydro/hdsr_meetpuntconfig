@@ -549,20 +549,19 @@ for loc_group, group_df in idmap_subloc_df.groupby('loc_groep'):
     
     ex_locs_skip = ts_ignore_df[ts_ignore_df['internalLocation'].isin(group_df['internalLocation'])]['externalLocation']
     
-    split_ts = [key for key in split_ts if not key in ex_locs_skip]
+    split_ts = [key for key in split_ts if not str(key) in ex_locs_skip.values.astype(np.str)]
     
     ex_locs_dict = {k:(ex_locs_dict[k[1:]] 
                         if (k[1:] in ex_locs_dict.keys()) and (not k in split_ts) 
                         else v) for (k,v) in ex_locs_dict.items()}
     
     org_uniques = np.unique([val for key,val in ex_locs_dict.items() if not key in split_ts])
-    
-    group_df['ex_loc_group'] = group_df['externalLocation'].apply((lambda x: ex_locs_dict[x]))
-    
-    
+       
     # als er maar 1 groep zit in split_ts én een groep in de originele tijdseriegroepen, dan samenvoegen
     if (len(org_uniques) == 1) & (len(split_ts) == 1):
         ex_locs_dict = {k:(org_uniques[0] if k in split_ts else v) for (k,v) in ex_locs_dict.items()}
+        
+    group_df['ex_loc_group'] = group_df['externalLocation'].apply((lambda x: ex_locs_dict[x]))
  
     for int_loc, loc_df in group_df.groupby('internalLocation'):
         loc_type = subloc_gdf[subloc_gdf['LOC_ID'] == int_loc]['TYPE'].values[0]
