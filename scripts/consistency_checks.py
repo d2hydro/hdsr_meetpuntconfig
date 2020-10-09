@@ -524,36 +524,30 @@ idmap_subloc_df = idmap_df[idmap_df['internalLocation'].isin(subloc_gdf['LOC_ID'
 idmap_subloc_df['type'] = idmap_subloc_df['internalLocation'].apply((lambda x: subloc_gdf[subloc_gdf['LOC_ID'] == x]['TYPE'].values[0])) #toevoegen van type
 
 #%%
-idmap_subloc_df = idmap_subloc_df[~idmap_subloc_df['type'].isin(['krooshek','debietmeter'])] # krooshekken en debietmeters zijn niet relevant
+#idmap_subloc_df = idmap_subloc_df[~idmap_subloc_df['type'].isin(['krooshek','debietmeter'])] # krooshekken en debietmeters zijn niet relevant
 idmap_subloc_df['loc_groep'] = idmap_subloc_df['internalLocation'].apply((lambda x: x[0:-1]))
 
 ts_errors = {'internalLocation':[],
              'internalParameters':[],
+             'externalParameters':[],
              'externalLocations':[],
              'type':[],
              'fout':[]
              }
 
-for loc_group in idmap_subloc_df.groupby('loc_groep'):
-
-    errors = dict.fromkeys(['stuurpeil','tijdseries'],False)
-    int_locs = np.unique(loc_group[1]['internalLocation'].values)
-    ex_locs = np.unique(loc_group[1]['externalLocation'])
-    
-    #het zoeken naar groepen met externe locaties
-    ex_locs_skip = [str(row[1]['externalLocation'])
-                    for row in ts_ignore_df.iterrows() 
-                    if any([re.match(row[1]['internalLocation'], loc) 
-                            for loc in int_locs])]
+for loc_group, group_df in idmap_subloc_df.groupby('loc_groep'):
     
     #uniek nummer per ex-loc
+    ex_locs = np.unique(group_df['externalLocation'].values)
     ex_locs_dict = {ex_loc:idx for idx, ex_loc in enumerate(ex_locs)}
     
     #vinden van 800 nummers
     split_ts = [key for key in ex_locs_dict.keys() if 
                   any([regex.match(key) 
-                       for regex in [re.compile(rex) 
-                                     for rex in ['8..','.8..']]])]
+                        for regex in [re.compile(rex) 
+                                      for rex in ['8..','.8..']]])]
+    
+    ex_locs_skip = ts_ignore_df[ts_ignore_df['internalLocation'].isin(group_df['internalLocation'])]['externalLocation']
     
     split_ts = [key for key in split_ts if not key in ex_locs_skip]
     
@@ -563,45 +557,108 @@ for loc_group in idmap_subloc_df.groupby('loc_groep'):
     
     org_uniques = np.unique([val for key,val in ex_locs_dict.items() if not key in split_ts])
     
+    group_df['ex_loc_group'] = group_df['externalLocation'].apply((lambda x: ex_locs_dict[x]))
+    
+    
     # als er maar 1 groep zit in split_ts én een groep in de originele tijdseriegroepen, dan samenvoegen
     if (len(org_uniques) == 1) & (len(split_ts) == 1):
         ex_locs_dict = {k:(org_uniques[0] if k in split_ts else v) for (k,v) in ex_locs_dict.items()}
-               
-    loc_group[1]['ex_loc_group'] = loc_group[1]['externalLocation'].apply((lambda x: ex_locs_dict[x]))
-    time_series = loc_group[1].groupby(['ex_loc_group','externalParameter'])
-       
-    if len(loc_group[1].groupby('internalLocation')) == 1:
-        int_loc = list(loc_group[1].groupby('internalLocation'))[0][0]
-        loc_type = list(loc_group[1].groupby('type'))[0][0]
-        sp_series = [series for series in time_series if bool(re.match('HR.',series[0][1]))]
-        unique, counts = np.unique([np.unique(series[1]['internalParameter']) for series in sp_series],return_counts=True)
-        sp_params = dict(zip(unique, counts)) 
-        for series in sp_series:
-            params = np.unique(series[1]['internalParameter'])
-            if len(params) > 1:
-                errors['tijdseries'] = f"dezelfde reeks gekoppeld aan parameters {','.join(params)}"
-                #logging.error(f'interne locatie {int_loc} heeft dezelfde tijdreeks gekoppeld aan interne parameters {",".join(params)}')
-            elif sp_params[params[0]] > 1:
-                errors['tijdseries'] = f"naast exLoc {','.join(np.unique(series[1]['externalLocation']))} en exPar {series[0][1]} nog andere reeks gekoppeld"
-                #logging.error(f"interne locatie {int_loc} heeft naast tijdreeks met exLoc {','.join(np.unique(series[1]['externalLocation']))} en exPar {series[0][1]}"
-                #              f" nog een andere reeks gekoppeld aan {params[0]}")
-            if errors['tijdseries']:
+ 
+    for int_loc, loc_df in group_df.groupby('internalLocation'):
+        loc_type = subloc_gdf[subloc_gdf['LOC_ID'] == int_loc]['TYPE'].values[0]
+        ex_pars = np.unique(loc_df['externalParameter'].values)
+        int_pars = np.unique(loc_df['internalParameter'].values)
+        ex_locs = np.unique(loc_df['externalLocation'].values)
+        
+        if loc_type in ['krooshek','debietmeter']:
+            if any([re.match('HR.',ex_par) for ex_par in ex_pars]):
+                #krooshek/debietmeter met stuurpeil = fout
                 ts_errors['internalLocation'].append(int_loc)
-                ts_errors['internalParameters'].append(",".join(params))
-                ts_errors['externalLocations'].append(','.join(np.unique(series[1]['externalLocation'])))
+                ts_errors['internalParameters'].append(",".join(int_pars))
+                ts_errors['externalParameters'].append(",".join(ex_pars))
+                ts_errors['externalLocations'].append(','.join(ex_locs))
                 ts_errors['type'].append(loc_type)
-                ts_errors['fout'].append(errors['tijdseries'])
+                ts_errors['fout'].append(f'{loc_type} met stuurpeil')
+        
+        else: #geen krooshek of debietmeter
+            # geen sp, maar wel sp op andere subloc = fout
+            if (not any([re.match('HR.',ex_par) for ex_par in ex_pars])): # geen stuurpeil
+                if any([re.match('HR.',ex_par) for ex_par in np.unique(group_df['externalParameter'])]):
+                    #~krooshek/debietmeter zonder stuurpeil = fout
+                    sp_locs = np.unique(group_df[group_df['externalParameter'].str.match('HR.')]['internalLocation'])
+                    ts_errors['internalLocation'].append(int_loc)
+                    ts_errors['internalParameters'].append(",".join(int_pars))
+                    ts_errors['externalParameters'].append(",".join(ex_pars))
+                    ts_errors['externalLocations'].append(','.join(ex_locs))
+                    ts_errors['type'].append(loc_type)
+                    ts_errors['fout'].append(f'{loc_type} zonder stuurpeil ({",".join(sp_locs)} wel)')
+                    
+            else: #krooshek/debietmeter met stuurpeil
+                # >1 sp zonder andere interne parameter = fout
+                time_series = loc_df.groupby(['ex_loc_group','externalParameter'])
+                sp_series = [series for series in time_series if bool(re.match('HR.',series[0][1]))]
+                for idx, series in enumerate(sp_series):
+                    ex_par = series[0][1]
+                    ex_locs = series[1]['externalLocation']
+                    int_par = np.unique(series[1]['internalParameter'])
+                    if len(int_par) > 1:
+                        # 1 sp series gekoppeld aan 2 fews parameters
+                        ts_errors['internalLocation'].append(int_loc)
+                        ts_errors['internalParameters'].append(",".join(int_pars))
+                        ts_errors['externalParameters'].append(",".join(ex_pars))
+                        ts_errors['externalLocations'].append(','.join(ex_locs))
+                        ts_errors['type'].append(loc_type)
+                        ts_errors['fout'].append(f'{",".join(int_par)} gekoppeld aan 1 sp-serie (exPar: {ex_par}, exLoc(s)): {",".join(ex_locs)}')
+                        
+                    other_series = [series for idy, series in enumerate(sp_series) if not idy == idx]
+                    other_int_pars = [np.unique(series[1]['internalParameter']) for series in other_series]
+                    if len(other_int_pars) > 0: other_int_pars = np.concatenate(other_int_pars)
+                    conflicting_pars = [par for par in int_par if par in other_int_pars]
+                    if len(conflicting_pars) > 0:
+                        # 2 sp series gekoppeld aan dezelfde fews parameter
+                        ts_errors['internalLocation'].append(int_loc)
+                        ts_errors['internalParameters'].append(",".join(int_pars))
+                        ts_errors['externalParameters'].append(",".join(ex_pars))
+                        ts_errors['externalLocations'].append(','.join(ex_locs))
+                        ts_errors['type'].append(loc_type)
+                        ts_errors['fout'].append(f'{",".join(conflicting_pars)} gekoppeld aan sp-serie (exPar: {ex_par}, exLoc(s)): {",".join(ex_locs)}')
+                        
+                    
+            
+            
+#     if len(group_df.groupby('internalLocation')) == 1:
+#         int_loc = list(group_df.groupby('internalLocation'))[0][0]
+#         loc_type = list(group_df.groupby('type'))[0][0]
+#         sp_series = [series for series in time_series if bool(re.match('HR.',series[0][1]))]
+#         unique, counts = np.unique([np.unique(series[1]['internalParameter']) for series in sp_series],return_counts=True)
+#         sp_params = dict(zip(unique, counts)) 
+#         for series in sp_series:
+#             params = np.unique(series[1]['internalParameter'])
+#             if len(params) > 1:
+#                 errors['tijdseries'] = f"dezelfde reeks gekoppeld aan parameters {','.join(params)}"
+#                 #logging.error(f'interne locatie {int_loc} heeft dezelfde tijdreeks gekoppeld aan interne parameters {",".join(params)}')
+#             elif sp_params[params[0]] > 1:
+#                 errors['tijdseries'] = f"naast exLoc {','.join(np.unique(series[1]['externalLocation']))} en exPar {series[0][1]} nog andere reeks gekoppeld"
+#                 #logging.error(f"interne locatie {int_loc} heeft naast tijdreeks met exLoc {','.join(np.unique(series[1]['externalLocation']))} en exPar {series[0][1]}"
+#                 #              f" nog een andere reeks gekoppeld aan {params[0]}")
+#             if errors['tijdseries']:
+#                 ts_errors['internalLocation'].append(int_loc)
+#                 ts_errors['internalParameters'].append(",".join(int_pars))
+#                 ts_errors['externalParameters'].append(",".join(ex_pars))
+#                 ts_errors['externalLocations'].append(','.join(np.unique(series[1]['externalLocation'])))
+#                 ts_errors['type'].append(loc_type)
+#                 ts_errors['fout'].append(errors['tijdseries'])
                 
-    if not any([bool(re.match('HR.',series[0][1])) for series in time_series]):
-        ''' MOET BETER ''' 
-        errors['stuurpeil'] = 'missend stuurpeil'
-        #logging.error(f'interne locatie {int_loc} van type {loc_type} heeft geen stuurpeil')
-        if errors['stuurpeil']:
-            ts_errors['internalLocation'].append(int_loc)
-            ts_errors['internalParameters'].append(",".join(params))
-            ts_errors['externalLocations'].append(','.join(np.unique(series[1]['externalLocation'])))
-            ts_errors['type'].append(loc_type)
-            ts_errors['fout'].append('missend stuurpeil')
+#     if not any([bool(re.match('HR.',ex_par)) for ex_par in ex_pars]):
+#         errors['stuurpeil'] = 'missend stuurpeil'
+#         #logging.error(f'interne locatie {int_loc} van type {loc_type} heeft geen stuurpeil')
+#         if errors['stuurpeil']:
+#             ts_errors['internalLocation'].append(int_loc)
+#             ts_errors['internalParameters'].append(",".join(int_pars))
+#             ts_errors['externalParameters'].append(",".join(ex_pars))
+#             ts_errors['externalLocations'].append(','.join(np.unique(series[1]['externalLocation'])))
+#             ts_errors['type'].append(loc_type)
+#             ts_errors['fout'].append('missend stuurpeil')
         
 config_df['timeSeries error'] = pd.DataFrame(ts_errors)
 
