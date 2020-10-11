@@ -15,6 +15,7 @@ ToDo:
 import configparser
 from fews_utilities import Config, xml_to_dict
 from pathlib import Path
+import json
 import numpy as np
 import pandas as pd
 import logging
@@ -643,21 +644,53 @@ else:
 #%% controle validationrulesets
 logging.info('controle validationRules')
 
-validation_rules = xml_to_dict(config.RegionConfigFiles['ValidationRuleSets'])['validationRuleSets']['validationRuleSet']
-validation_rules = [rule for rule in validation_rules if 'extremeValuesFunctions' in rule.keys()]
+location_sets_dict = xml_to_dict(config.RegionConfigFiles['LocationSets'])['locationSets']['locationSet']
+set_name = 'subloc'
+location_set = location_sets[set_name]
+location_set_meta = next(loc_set for loc_set in location_sets_dict if loc_set['id'] == location_set['id'])['csvFile']
+location_set_gdf = location_set['gdf']
 
-#for validation_rule in validation_rules:
-validation_rule = validation_rules[4]
-location_sets = np.unique([ts['locationSetId'] for ts in validation_rule['timeSeriesSet']])
+attrib_files = location_set_meta['attributeFile']
 
-location_set = location_sets[0]
-config.locationSets[location_set]
+if not isinstance(attrib_files,list):
+    attrib_files = [attrib_files]
 
-hard_max = next(v for (k,v) in validation_rule['extremeValuesFunctions'].items() if k == 'hardMax')
-soft_max = next(v for (k,v) in validation_rule['extremeValuesFunctions'].items() if k == 'softMax')
-hard_min = next(v for (k,v) in validation_rule['extremeValuesFunctions'].items() if k == 'hardMin')
-soft_min = next(v for (k,v) in validation_rule['extremeValuesFunctions'].items() if k == 'softMin')
 
+for attrib_file in attrib_files:    
+    # schone lijst met attributen verkrijgen
+    attribs = attrib_file['attribute']
+    join_id =  attrib_file['id'].replace("%","")
+    if not isinstance(attrib_file['attribute'],list):
+        attribs = [attribs]        
+    attribs = [attrib['number'].replace("%",'') for attrib in attribs if 'number' in attrib.keys()]
+    
+    # attribuut-bestand relateren op locatie aan locationSet
+    attrib_df = pd.read_csv(config.MapLayerFiles[attrib_file['csvFile'].replace('.csv','')],
+                            sep=None,
+                            engine='python')
+    
+    attrib_df.rename(columns={join_id:'LOC_ID'},inplace=True)
+    drop_cols = [col for col in attrib_df if not col in attribs + ['LOC_ID']]
+    attrib_df = attrib_df.drop(columns=drop_cols, axis=1)
+
+    location_set_gdf = location_set_gdf.merge(attrib_df,
+                                              on='LOC_ID',
+                                              how='outer')
+    
+validation_rules = json.loads(ini_config['validationRules'][set_name])
+
+#row = location_set_gdf.loc[0]
+for (idx, row) in location_set_gdf.iterrows():
+    row = row.dropna()
+    for validationrule in validation_rules:
+    #validationrule = validation_rules[0]
+        if all(elem in row.keys() for elem in validationrule.values()):
+            values = iter(validationrule.values())
+            next(values)
+            for idy, value in enumerate(values):
+                if not row[value] < row[list(validationrule.values())[idy]]:
+                    print(f"{row['LOC_ID']}: {value} >= {list(validationrule.values())[idy]}")
+                    
 
 #%% wegschrijven naar excel
     
