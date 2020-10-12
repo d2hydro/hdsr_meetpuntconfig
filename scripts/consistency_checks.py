@@ -43,7 +43,8 @@ warning_sheets = ['histTags_noMatch',
                   'exPar missing',
                   'intLoc missing',
                   'exLoc error',
-                  'timeSeries error']
+                  'timeSeries error',
+                  'validation error']
 
 idmap_files = ['IdOPVLWATER',
               'IdOPVLWATER_HYMOS',
@@ -680,18 +681,62 @@ for attrib_file in attrib_files:
 validation_rules = json.loads(ini_config['validationRules'][set_name])
 
 #row = location_set_gdf.loc[0]
-for (idx, row) in location_set_gdf.iterrows():
-    row = row.dropna()
-    for validationrule in validation_rules:
-    #validationrule = validation_rules[0]
-        if all(elem in row.keys() for elem in validationrule.values()):
-            values = iter(validationrule.values())
-            next(values)
-            for idy, value in enumerate(values):
-                if not row[value] < row[list(validationrule.values())[idy]]:
-                    print(f"{row['LOC_ID']}: {value} >= {list(validationrule.values())[idy]}")
-                    
+params_df = pd.DataFrame.from_dict({int_loc:[df['internalParameter'].values] 
+                                    for int_loc, df 
+                                    in idmap_df.groupby('internalLocation')}, 
+                                   orient='index', 
+                                   columns=['internalParameters'])
 
+valid_errors = {'internalLocation':[],
+             'internalParameters':[],
+             'fout':[]
+             }
+for (idx, row) in location_set_gdf.iterrows():
+    int_loc = row['LOC_ID']
+    row = row.dropna()
+    errors = []
+    for param, validationrule in validation_rules.items():
+        attribs = [attrib for attrib in validationrule.values() if attrib in row]
+        attribs_missing = [attrib for attrib in validationrule.values() if not attrib in row]
+        if int_loc in params_df.index:
+            int_pars = params_df.loc[int_loc]['internalParameters']
+        else:
+            int_pars = []
+        if any(re.match(param,int_par) for int_par in int_pars):
+            if len(attribs_missing) == 0:
+                if all(key in ['hmax', 'hmin'] for key in validationrule.keys()):
+                    if row[validationrule['hmax']] < row[validationrule['hmin']]:
+                        errors += [f"{validationrule['hmax']} < {validationrule['hmin']}"]
+                if all(key in validationrule.keys() for key in ['hmax', 'smax', 'smin', 'hmin']):
+                    if row[validationrule['smax']] <= row[validationrule['smin']]:
+                        errors += [f"{row['LOC_ID']} {validationrule['smax']} <= {validationrule['smin']}"]
+                    if row[validationrule['hmax']] < row[validationrule['smax']]:
+                        errors += [f"{row['LOC_ID']} {validationrule['hmax']} < {validationrule['smax']}"]
+                    if row[validationrule['smin']] < row[validationrule['hmin']]:
+                        errors += [f"{row['LOC_ID']} {validationrule['smin']} < {validationrule['hmin']}"]
+            else: #locatie wordt niet gevalideerd voor parameter
+                errors += [f"{row['LOC_ID']} met parameter {param} mist attribuutwaarden {','.join(attribs_missing)}"]
+        elif len(attribs) > 0:
+            errors += [f"{row['LOC_ID']} met parameters {','.join(params_df.loc[int_loc]['internalParameters'])} heeft attribuutwaarden {','.join(attribs)}"]                 
+
+    if len(errors) > 0:
+        # if len(errors) > 1:
+        #     print(f"{[row['LOC_ID']] * len(errors)} {[','.join(int_pars)] * len(errors)} {errors}")
+        valid_errors['internalLocation'] += [row['LOC_ID']] * len(errors)
+        valid_errors['internalParameters'] += [','.join(int_pars)] * len(errors)
+        valid_errors['fout'] += errors
+
+config_df['validation error'] = pd.DataFrame(valid_errors)
+
+#opname in samenvatting
+summary['validation error'] = len(config_df['validation error'])
+
+if summary['validation error'] == 0:
+    logging.info('er zijn geen foute/missende validatieregels')
+else:
+    logging.warning('{} validatieregels zijn fout/missend'.format(summary['validation error']))
+            
+        
 #%% wegschrijven naar excel
     
 #lees input xlsx en gooi alles weg behalve de fixed_sheets
