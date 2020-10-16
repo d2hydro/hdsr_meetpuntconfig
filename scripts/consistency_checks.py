@@ -25,6 +25,7 @@ import os
 import sys
 import shutil
 import re
+from collections.abc import Iterable
 
 pd.options.mode.chained_assignment = None
 
@@ -44,7 +45,8 @@ warning_sheets = ['histTags_noMatch',
                   'intLoc missing',
                   'exLoc error',
                   'timeSeries error',
-                  'validation error']
+                  'validation error',
+                  'par mismatch']
 
 idmap_files = ['IdOPVLWATER',
               'IdOPVLWATER_HYMOS',
@@ -101,13 +103,22 @@ def update_hlocs(row):
     
     return start_date, end_date 
 
+def flatten(l):
+    '''functie voor het platslaan van een onregemlatige iterable van lijsten'''
+    for el in l:
+        if isinstance(el, Iterable) and not isinstance(el, (str, bytes)):
+            yield from flatten(el)
+        else:
+            yield el
+
 #%% initialisatie
 workdir = Path(__file__).parent
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 summary = dict()
 
 #inlezen paden vanuit inifile
-ini_config = configparser.ConfigParser()
+ini_config = configparser.RawConfigParser()
+ini_config.optionxform = str
 ini_config.read(workdir.joinpath(r'..\config\config.ini'))
 consistency_in = Path(r'{}'.format(ini_config['paden']['consistency_in']))
 consistency_out = Path(r'{}'.format(ini_config['paden']['consistency_out']))
@@ -532,9 +543,6 @@ else:
 #%%
 idmap_subloc_df = idmap_df[idmap_df['internalLocation'].isin(subloc_gdf['LOC_ID'].values)] # alleen locaties die in de sub-locs locationSet zitten
 idmap_subloc_df['type'] = idmap_subloc_df['internalLocation'].apply((lambda x: subloc_gdf[subloc_gdf['LOC_ID'] == x]['TYPE'].values[0])) #toevoegen van type
-
-#%%
-#idmap_subloc_df = idmap_subloc_df[~idmap_subloc_df['type'].isin(['krooshek','debietmeter'])] # krooshekken en debietmeters zijn niet relevant
 idmap_subloc_df['loc_groep'] = idmap_subloc_df['internalLocation'].apply((lambda x: x[0:-1]))
 
 ts_errors = {'internalLocation':[],
@@ -645,87 +653,94 @@ else:
 #%% controle validationrulesets
 logging.info('controle validationRules')
 
-location_sets_dict = xml_to_dict(config.RegionConfigFiles['LocationSets'])['locationSets']['locationSet']
-set_name = 'subloc'
-location_set = location_sets[set_name]
-location_set_meta = next(loc_set for loc_set in location_sets_dict if loc_set['id'] == location_set['id'])['csvFile']
-location_set_gdf = location_set['gdf']
-
-attrib_files = location_set_meta['attributeFile']
-
-if not isinstance(attrib_files,list):
-    attrib_files = [attrib_files]
-
-
-for attrib_file in attrib_files:    
-    # schone lijst met attributen verkrijgen
-    attribs = attrib_file['attribute']
-    join_id =  attrib_file['id'].replace("%","")
-    if not isinstance(attrib_file['attribute'],list):
-        attribs = [attribs]        
-    attribs = [attrib['number'].replace("%",'') for attrib in attribs if 'number' in attrib.keys()]
-    
-    # attribuut-bestand relateren op locatie aan locationSet
-    attrib_df = pd.read_csv(config.MapLayerFiles[attrib_file['csvFile'].replace('.csv','')],
-                            sep=None,
-                            engine='python')
-    
-    attrib_df.rename(columns={join_id:'LOC_ID'},inplace=True)
-    drop_cols = [col for col in attrib_df if not col in attribs + ['LOC_ID']]
-    attrib_df = attrib_df.drop(columns=drop_cols, axis=1)
-
-    location_set_gdf = location_set_gdf.merge(attrib_df,
-                                              on='LOC_ID',
-                                              how='outer')
-    
-validation_rules = json.loads(ini_config['validationRules'][set_name])
-
-#row = location_set_gdf.loc[0]
-params_df = pd.DataFrame.from_dict({int_loc:[df['internalParameter'].values] 
-                                    for int_loc, df 
-                                    in idmap_df.groupby('internalLocation')}, 
-                                   orient='index', 
-                                   columns=['internalParameters'])
-
 valid_errors = {'internalLocation':[],
              'internalParameters':[],
              'fout':[]
              }
-for (idx, row) in location_set_gdf.iterrows():
-    int_loc = row['LOC_ID']
-    row = row.dropna()
-    errors = []
-    for param, validationrule in validation_rules.items():
-        attribs = [attrib for attrib in validationrule.values() if attrib in row]
-        attribs_missing = [attrib for attrib in validationrule.values() if not attrib in row]
-        if int_loc in params_df.index:
-            int_pars = params_df.loc[int_loc]['internalParameters']
-        else:
-            int_pars = []
-        if any(re.match(param,int_par) for int_par in int_pars):
-            if len(attribs_missing) == 0:
-                if all(key in ['hmax', 'hmin'] for key in validationrule.keys()):
-                    if row[validationrule['hmax']] < row[validationrule['hmin']]:
-                        errors += [f"{validationrule['hmax']} < {validationrule['hmin']}"]
-                if all(key in validationrule.keys() for key in ['hmax', 'smax', 'smin', 'hmin']):
-                    if row[validationrule['smax']] <= row[validationrule['smin']]:
-                        errors += [f"{row['LOC_ID']} {validationrule['smax']} <= {validationrule['smin']}"]
-                    if row[validationrule['hmax']] < row[validationrule['smax']]:
-                        errors += [f"{row['LOC_ID']} {validationrule['hmax']} < {validationrule['smax']}"]
-                    if row[validationrule['smin']] < row[validationrule['hmin']]:
-                        errors += [f"{row['LOC_ID']} {validationrule['smin']} < {validationrule['hmin']}"]
-            else: #locatie wordt niet gevalideerd voor parameter
-                errors += [f"{row['LOC_ID']} met parameter {param} mist attribuutwaarden {','.join(attribs_missing)}"]
-        elif len(attribs) > 0:
-            errors += [f"{row['LOC_ID']} met parameters {','.join(params_df.loc[int_loc]['internalParameters'])} heeft attribuutwaarden {','.join(attribs)}"]                 
 
-    if len(errors) > 0:
-        # if len(errors) > 1:
-        #     print(f"{[row['LOC_ID']] * len(errors)} {[','.join(int_pars)] * len(errors)} {errors}")
-        valid_errors['internalLocation'] += [row['LOC_ID']] * len(errors)
-        valid_errors['internalParameters'] += [','.join(int_pars)] * len(errors)
-        valid_errors['fout'] += errors
-
+location_sets_dict = xml_to_dict(config.RegionConfigFiles['LocationSets'])['locationSets']['locationSet']
+for set_name in ini_config['validationRules'].keys():
+    #set_name = 'sublocaties'
+    location_set = location_sets[set_name]
+    location_set_meta = next(loc_set for loc_set in location_sets_dict if loc_set['id'] == location_set['id'])['csvFile']
+    location_set_gdf = location_set['gdf']
+    
+    attrib_files = location_set_meta['attributeFile']
+    
+    if not isinstance(attrib_files,list):
+        attrib_files = [attrib_files]
+    
+    attrib_files = [attrib_file for attrib_file in attrib_files if 'attribute' in attrib_file.keys()]
+    
+    for attrib_file in attrib_files:    
+        # schone lijst met attributen verkrijgen
+        attribs = attrib_file['attribute']
+        join_id =  attrib_file['id'].replace("%","")
+        if not isinstance(attrib_file['attribute'],list):
+            attribs = [attribs]        
+        attribs = [attrib['number'].replace("%",'') for attrib in attribs if 'number' in attrib.keys()]
+        
+        # attribuut-bestand relateren op locatie aan locationSet
+        attrib_df = pd.read_csv(config.MapLayerFiles[attrib_file['csvFile'].replace('.csv','')],
+                                sep=None,
+                                engine='python')
+        
+        attrib_df.rename(columns={join_id:'LOC_ID'},inplace=True)
+        drop_cols = [col for col in attrib_df if not col in attribs + ['LOC_ID']]
+        attrib_df = attrib_df.drop(columns=drop_cols, axis=1)
+    
+        location_set_gdf = location_set_gdf.merge(attrib_df,
+                                                  on='LOC_ID',
+                                                  how='outer')
+        
+    validation_rules = json.loads(ini_config['validationRules'][set_name])
+    
+    #row = location_set_gdf.loc[0]
+    params_df = pd.DataFrame.from_dict({int_loc:[df['internalParameter'].values] 
+                                        for int_loc, df 
+                                        in idmap_df.groupby('internalLocation')}, 
+                                       orient='index', 
+                                       columns=['internalParameters'])
+    
+    for (idx, row) in location_set_gdf.iterrows():
+        int_loc = row['LOC_ID']
+        row = row.dropna()
+        errors = []
+        for param, validationrule in validation_rules.items():
+            attribs = [attrib for attrib in flatten(validationrule.values()) if attrib in row]
+            attribs_missing = [attrib for attrib in flatten(validationrule.values()) if not attrib in row]
+            if int_loc in params_df.index:
+                int_pars = params_df.loc[int_loc]['internalParameters']
+            else:
+                int_pars = []
+            if any(re.match(param,int_par) for int_par in int_pars):
+                if len(attribs_missing) == 0:
+                    if all(key in ['hmax', 'hmin'] for key in validationrule.keys()):
+                        if row[validationrule['hmax']] < row[validationrule['hmin']]:
+                            errors += [f"{validationrule['hmax']} < {validationrule['hmin']}"]
+                    if all(key in validationrule.keys() for key in ['hmax', 'smax', 'smin', 'hmin']):
+                        #soft mins/max' kunnen lijsten zijn, dus maken we er lijsten van
+                        soft_mins = [validationrule['smin']] if isinstance(validationrule['smin'], str) else validationrule['smin']
+                        soft_maxs = [validationrule['smax']] if isinstance(validationrule['smax'], str) else validationrule['smax']
+                        for soft_min, soft_max in zip(soft_mins, soft_maxs):
+                            if row[soft_max] <= row[soft_min]:
+                                errors += [f"{row['LOC_ID']} {validationrule['smax']} <= {validationrule['smin']}"]
+                            if row[validationrule['hmax']] < row[soft_max]:
+                                errors += [f"{row['LOC_ID']} {validationrule['hmax']} < {validationrule['smax']}"]
+                            if row[soft_min] < row[validationrule['hmin']]:
+                                errors += [f"{row['LOC_ID']} {validationrule['smin']} < {validationrule['hmin']}"]
+                else: #locatie wordt niet gevalideerd voor parameter
+                    errors += [f"{row['LOC_ID']} met parameter {param} mist attribuutwaarden {','.join(attribs_missing)}"]
+            elif len(attribs) > 0:
+                errors += [f"{row['LOC_ID']} met parameters {','.join(params_df.loc[int_loc]['internalParameters'])} heeft attribuutwaarden {','.join(attribs)}"]                 
+    
+        if len(errors) > 0:
+            # if len(errors) > 1:
+            #     print(f"{[row['LOC_ID']] * len(errors)} {[','.join(int_pars)] * len(errors)} {errors}")
+            valid_errors['internalLocation'] += [row['LOC_ID']] * len(errors)
+            valid_errors['internalParameters'] += [','.join(int_pars)] * len(errors)
+            valid_errors['fout'] += errors
+    
 config_df['validation error'] = pd.DataFrame(valid_errors)
 
 #opname in samenvatting
@@ -735,7 +750,45 @@ if summary['validation error'] == 0:
     logging.info('er zijn geen foute/missende validatieregels')
 else:
     logging.warning('{} validatieregels zijn fout/missend'.format(summary['validation error']))
-            
+
+#%% controle op expar
+logging.info('regex externalParameters')
+par_errors = {'internalLocation':[],
+             'internalParameter':[],
+             'externalParameter':[],
+             'fout':[]
+             }
+
+internal_parameters = list(ini_config['parameters'].keys())
+for idx, row in idmap_df.iterrows():
+    error = None
+    ext_par = None
+    ext_par = next((ini_config['parameters'][param] for param in internal_parameters if re.match(f'{param}[0-9]',row['internalParameter'])), None)
+    
+    if ext_par:
+        ext_par = ext_par.strip("[]").replace(" ", "").split(",")  
+    
+        if not any(re.match(par,row['externalParameter']) for par in ext_par):
+            error = 'parameter mismatch'
+    
+    else:
+        error = 'pars niet opgenomen in config'
+        
+    if error:
+        par_errors['internalLocation'].append(row['internalLocation'])
+        par_errors['internalParameter'].append(row['internalParameter'])
+        par_errors['externalParameter'].append(row['externalParameter'])
+        par_errors['fout'].append(error)
+
+config_df['par mismatch'] = pd.DataFrame(par_errors)
+#opname in samenvatting
+
+summary['par mismatch'] = len(config_df['par mismatch'])
+
+if summary['par mismatch'] == 0:
+    logging.info('geen regex fouten op interne en externe parameters')
+else:
+    logging.warning('{} regex fouten op interne en externe parameters'.format(summary['par mismatch']))    
         
 #%% wegschrijven naar excel
     
