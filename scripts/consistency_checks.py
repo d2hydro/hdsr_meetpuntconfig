@@ -46,7 +46,8 @@ warning_sheets = ['histTags_noMatch',
                   'exLoc error',
                   'timeSeries error',
                   'validation error',
-                  'par mismatch']
+                  'par mismatch',
+                  'locSet error']
 
 idmap_files = ['IdOPVLWATER',
               'IdOPVLWATER_HYMOS',
@@ -63,7 +64,10 @@ idmap_sections = {'IdOPVLWATER':{'KUNSTWERKEN':[{'section_start': '<!--KUNSTWERK
                                                  'section_end': '<!--MSW (old CAW id)-->'},
                                                 {'section_start': '<!--WATERSTANDSLOCATIES (new CAW id)-->',
                                                 'section_end': '<!--MSW (new CAW id)-->'}],
-                          'MSWLOCATIES':[{'section_start': '<!--MSW (new CAW id)-->'}]}
+                          'MSWLOCATIES':[{'section_start': '<!--MSW (new CAW id)-->'}]},
+                  'IdOPVLWATER_HYMOS':{'KUNSTWERKEN':[{'section_end':'<!--WATERSTANDSLOCATIES-->'}],
+                                       'WATERSTANDLOCATIES':[{'section_start': '<!--WATERSTANDSLOCATIES-->',
+                                                              'section_end':'<!--OVERIG-->'}]}
                   }
 
 # exParameters per sub-loc type
@@ -185,32 +189,33 @@ config_df['idmap v sectie'] = pd.DataFrame(columns=['bestand',
                                                     'internalLocation',
                                                     'internalParameter',
                                                     ])
-for idmap, idmap_subsecs in idmap_sections.items():
-    for section_type, sections in idmap_subsecs.items():
-        for section in sections:
-            if section_type == 'KUNSTWERKEN':
-                prefix = 'KW'
-            if section_type == 'WATERSTANDLOCATIES':
-                prefix = 'OW'
-            if section_type == 'MSWLOCATIES':
-                prefix = '(OW|KW)'
-            pattern = f'{prefix}\d{{6}}$'
-            idmap_wrong_section = [idmap for idmap in xml_to_dict(config.IdMapFiles[idmap],**section)['idMap']['map'] 
-                                   if not bool(re.match(pattern,idmap['internalLocation']))]
-            if len(idmap_wrong_section):
-                section_start = section['section_start'] if 'section_start' in section.keys() else ''
-                section_end = section['section_end'] if 'section_end' in section.keys() else ''
-                logging.warning('{} internalLocations anders dan {}XXXXXX tussen {} en {} in {}'.format(len(idmap_wrong_section),
-                                                                                                       prefix,
-                                                                                                       section_start,
-                                                                                                       section_end,
-                                                                                                       idmap))
-                df = pd.DataFrame(idmap_wrong_section)
-                df['sectie'] = section_start
-                df['bestand'] = idmap
-                config_df['idmap v sectie'] = pd.concat([config_df['idmap v sectie'], df], axis=0)
-    
-    summary['idmaps in verkeerde sectie'] = len(config_df['idmap v sectie'])
+idmap = 'IdOPVLWATER'
+idmap_subsecs = idmap_sections[idmap]
+for section_type, sections in idmap_subsecs.items():
+    for section in sections:
+        if section_type == 'KUNSTWERKEN':
+            prefix = 'KW'
+        if section_type == 'WATERSTANDLOCATIES':
+            prefix = 'OW'
+        if section_type == 'MSWLOCATIES':
+            prefix = '(OW|KW)'
+        pattern = f'{prefix}\d{{6}}$'
+        idmap_wrong_section = [idmap for idmap in xml_to_dict(config.IdMapFiles[idmap],**section)['idMap']['map'] 
+                               if not bool(re.match(pattern,idmap['internalLocation']))]
+        if len(idmap_wrong_section):
+            section_start = section['section_start'] if 'section_start' in section.keys() else ''
+            section_end = section['section_end'] if 'section_end' in section.keys() else ''
+            logging.warning('{} internalLocations anders dan {}XXXXXX tussen {} en {} in {}'.format(len(idmap_wrong_section),
+                                                                                                   prefix,
+                                                                                                   section_start,
+                                                                                                   section_end,
+                                                                                                   idmap))
+            df = pd.DataFrame(idmap_wrong_section)
+            df['sectie'] = section_start
+            df['bestand'] = idmap
+            config_df['idmap v sectie'] = pd.concat([config_df['idmap v sectie'], df], axis=0)
+
+summary['idmaps in verkeerde sectie'] = len(config_df['idmap v sectie'])
 
 #%% inlezen hist tags & ignore lijst
 logging.info('zoeken naar missende histTags in idmaps')
@@ -789,7 +794,67 @@ if summary['par mismatch'] == 0:
     logging.info('geen regex fouten op interne en externe parameters')
 else:
     logging.warning('{} regex fouten op interne en externe parameters'.format(summary['par mismatch']))    
-        
+
+#%% validatie locationSets
+set_name = 'waterstand'
+location_set = location_sets[set_name]
+
+loc_set_errors = {'locationId':[],
+                  'set_name':[],
+                  'location_name':[],
+                  'loc_name_error':[],
+                  'missing_in_map':[],
+                  'missing_in_set':[],
+                  'missing_peilschaal':[]}
+
+int_locs = []
+for idmap in ['IdOPVLWATER', 'IdOPVLWATER_HYMOS']:
+    for section in idmap_sections[idmap]['WATERSTANDLOCATIES']: 
+        int_locs += [item['internalLocation'] for item in xml_to_dict(config.IdMapFiles[idmap],**section)['idMap']['map']]
+
+idx, row = list(location_set['gdf'].iterrows())[0]
+error = {'loc_name_error':False,
+         'missing_in_map':False,
+         'missing_in_set':False,
+         'missing_peilschaal':False}
+
+loc_id = row['LOC_ID']
+loc_name = row['LOC_NAME']
+if not re.match(f'[A-Z]*_{loc_id[2:-2]}-w_.*',loc_name):
+    error['loc_name_error'] = True
+
+if not loc_id in int_locs:
+    error['missing_in_map'] = True
+
+if not row['PEILSCHAAL'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
+    error['missing_peilschaal'] = True
+
+if any(error.values()):
+    loc_set_errors['locationId'].append(loc_id)
+    loc_set_errors['set_name'].append(set_name)
+    loc_set_errors['location_name'].append(loc_name)
+    for key, value in error.items():
+        loc_set_errors[key].append(value)
+    
+miss_locs = [loc for loc in int_locs if not loc in location_set['gdf']['LOC_ID'].values]
+for loc_id in miss_locs:
+    loc_set_errors['locationId'].append(loc_id)
+    loc_set_errors['set_name'].append(set_name)
+    loc_set_errors['location_name'].append('')
+    loc_set_errors['missing_in_set'].append(True)
+    for key in ['loc_name_error','missing_in_map','missing_peilschaal']:
+        loc_set_errors[key].append(False)
+
+config_df['locSet error'] = pd.DataFrame(loc_set_errors)
+#opname in samenvatting
+
+summary['locSet error'] = len(config_df['locSet error'])
+
+if summary['locSet error'] == 0:
+    logging.info('geen fouten in locationSets')
+else:
+    logging.warning('{} geen fouten in locationSets'.format(summary['locSet error']))        
+       
 #%% wegschrijven naar excel
     
 #lees input xlsx en gooi alles weg behalve de fixed_sheets
