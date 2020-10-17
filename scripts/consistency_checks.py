@@ -796,54 +796,113 @@ else:
     logging.warning('{} regex fouten op interne en externe parameters'.format(summary['par mismatch']))    
 
 #%% validatie locationSets
-set_name = 'waterstand'
-location_set = location_sets[set_name]
-
+logging.info('validatie locatieSets')
 loc_set_errors = {'locationId':[],
-                  'set_name':[],
+                  'csv_file':[],
                   'location_name':[],
                   'loc_name_error':[],
                   'missing_in_map':[],
                   'missing_in_set':[],
-                  'missing_peilschaal':[]}
+                  'missing_peilschaal':[],
+                  'missing_hbov':[],
+                  'missing_hben':[],
+                  'missing_hbovps':[],
+                  'missing_hbenps':[],
+                  'missing_hloc':[],
+                  'xy_par_not_same':[]}
 
-int_locs = []
-for idmap in ['IdOPVLWATER', 'IdOPVLWATER_HYMOS']:
-    for section in idmap_sections[idmap]['WATERSTANDLOCATIES']: 
-        int_locs += [item['internalLocation'] for item in xml_to_dict(config.IdMapFiles[idmap],**section)['idMap']['map']]
+sets = {'waterstand':'WATERSTANDLOCATIES',
+        'sublocaties': 'KUNSTWERKEN'}
 
-idx, row = list(location_set['gdf'].iterrows())[0]
-error = {'loc_name_error':False,
-         'missing_in_map':False,
-         'missing_in_set':False,
-         'missing_peilschaal':False}
-
-loc_id = row['LOC_ID']
-loc_name = row['LOC_NAME']
-if not re.match(f'[A-Z]*_{loc_id[2:-2]}-w_.*',loc_name):
-    error['loc_name_error'] = True
-
-if not loc_id in int_locs:
-    error['missing_in_map'] = True
-
-if not row['PEILSCHAAL'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
-    error['missing_peilschaal'] = True
-
-if any(error.values()):
-    loc_set_errors['locationId'].append(loc_id)
-    loc_set_errors['set_name'].append(set_name)
-    loc_set_errors['location_name'].append(loc_name)
-    for key, value in error.items():
-        loc_set_errors[key].append(value)
+for set_name,section_name in sets.items():
+    logging.info(set_name)
+    location_set = location_sets[set_name]
+    location_gdf = location_set['gdf']
+    csv_file = config.locationSets[location_set['id']]['csvFile']['file']
+    int_locs = []
+    for idmap in ['IdOPVLWATER', 'IdOPVLWATER_HYMOS']:
+        for section in idmap_sections[idmap][section_name]: 
+            int_locs += [item['internalLocation'] for item in xml_to_dict(config.IdMapFiles[idmap],**section)['idMap']['map']]
     
-miss_locs = [loc for loc in int_locs if not loc in location_set['gdf']['LOC_ID'].values]
-for loc_id in miss_locs:
-    loc_set_errors['locationId'].append(loc_id)
-    loc_set_errors['set_name'].append(set_name)
-    loc_set_errors['location_name'].append('')
-    loc_set_errors['missing_in_set'].append(True)
-    for key in ['loc_name_error','missing_in_map','missing_peilschaal']:
-        loc_set_errors[key].append(False)
+    if set_name == 'sublocaties':
+        int_locs = [loc for loc in int_locs if not loc[-1] == '0']
+        par_gdf = location_sets['hoofdlocaties']['gdf']
+        
+    elif set_name == 'hoofdlocaties':
+        int_locs = [loc for loc in int_locs if loc[-1] == '0']
+    
+    #idx, row = list(location_gdf.iterrows())[0]
+    for idx, row in list(location_gdf.iterrows()):
+        error = {'loc_name_error':False,
+                 'missing_in_map':False,
+                 'missing_in_set':False,
+                 'missing_peilschaal':False,
+                 'missing_hbov':False,
+                 'missing_hben':False,
+                 'missing_hbovps':False,
+                 'missing_hbenps':False,
+                 'missing_hloc':False,
+                 'xy_par_not_same':False}
+        
+        loc_id = row['LOC_ID']
+        loc_name = row['LOC_NAME']
+        
+        if set_name == 'sublocaties':
+            
+            loc_functie = row['FUNCTIE']
+            loc_type = row['TYPE']
+            
+            if not re.match(f'[A-Z]*_{loc_id[2:-2]}-K_[A-Z]*-{loc_type}[0-9]_{loc_functie}',loc_name):
+                error['loc_name_error'] = True
+                
+            if not row['HBOV'] in location_sets['waterstand']['gdf']['LOC_ID'].values:
+                error['missing_hbov'] = True
+            
+            if not row['HBEN'] in location_sets['waterstand']['gdf']['LOC_ID'].values:
+                error['missing_hben'] = True
+                
+            if not row['HBOVPS'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
+                error['missing_hbovps'] = True
+            
+            if not row['HBENPS'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
+                error['missing_hbenps'] = True
+                
+            if not row['PAR_ID'] in location_sets['hoofdlocaties']['gdf']['LOC_ID'].values:
+                error['missing_hloc'] = True
+            
+            else:
+                if not par_gdf[par_gdf['LOC_ID'] == row['PAR_ID']]['geometry'].values[0].equals(row['geometry']):
+                    error['xy_par_not_same'] = True
+        
+        elif set_name == 'hoofdlocaties':
+            if not re.match(f'[A-Z]*_{loc_id[2:-2]}-K_[A-Z]*',loc_name):
+                error['loc_name_error'] = True        
+                
+        elif set_name == 'waterstand':
+            if not re.match(f'[A-Z]*_{loc_id[2:-2]}-w_.*',loc_name):
+                error['loc_name_error'] = True
+    
+            if not row['PEILSCHAAL'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
+                error['missing_peilschaal'] = True
+                
+        if not loc_id in int_locs:
+            error['missing_in_map'] = True
+        
+        if any(error.values()):
+            loc_set_errors['locationId'].append(loc_id)
+            loc_set_errors['csv_file'].append(csv_file)
+            loc_set_errors['location_name'].append(loc_name)
+            for key, value in error.items():
+                loc_set_errors[key].append(value)
+            
+        # miss_locs = [loc for loc in int_locs if not loc in location_set['gdf']['LOC_ID'].values]
+        # #for loc_id in miss_locs:
+        # loc_set_errors['locationId'].append(miss_locs)
+        # loc_set_errors['csv_file'].append([csv_file] * len(miss_locs))
+        # loc_set_errors['location_name'].append([''] * len(miss_locs))
+        # loc_set_errors['missing_in_set'].append([True] * len(miss_locs))
+        # for key in ['loc_name_error','missing_in_map','missing_peilschaal']:
+        #     loc_set_errors[key].append([False] * len(miss_locs))
 
 config_df['locSet error'] = pd.DataFrame(loc_set_errors)
 #opname in samenvatting
@@ -853,7 +912,7 @@ summary['locSet error'] = len(config_df['locSet error'])
 if summary['locSet error'] == 0:
     logging.info('geen fouten in locationSets')
 else:
-    logging.warning('{} geen fouten in locationSets'.format(summary['locSet error']))        
+    logging.warning('{} fouten in locationSets'.format(summary['locSet error']))        
        
 #%% wegschrijven naar excel
     
@@ -904,7 +963,7 @@ xls_writer.book.active = xls_writer.book['samenvatting']
 xls_writer.save()
 
 #%% updaten csv's
-def update_csv(row,mpt_df,date_threshold):
+def update_date(row,mpt_df,date_threshold):
     int_loc = row['LOC_ID']
     if int_loc in mpt_df.index:
         start_date = mpt_df.loc[int_loc]['STARTDATE'].strftime('%Y%m%d')
@@ -918,18 +977,40 @@ def update_csv(row,mpt_df,date_threshold):
         
     return start_date, end_date
 
-#%%
+def update_histtag(row,grouper):
+    
+    return next((df.sort_values('total_max_end_dt', ascending=False)['serie'].values[0]
+                 for loc_id, df 
+                 in grouper 
+                 if loc_id == row['LOC_ID']),None)
+
+#def update_types(row):
+    
+
 date_threshold = mpt_df['ENDDATE'].max() - pd.Timedelta(weeks=26)
 
 for locationSet, gdf in {'OPVLWATER_HOOFDLOC': hoofdloc_gdf,
-                         'OPVLWATER_SUBLOC': subloc_gdf,
-                         'OPVLWATER_WATERSTANDEN_AUTO': waterstand_gdf}.items():
+                         'OPVLWATER_WATERSTANDEN_AUTO': waterstand_gdf,
+                         'OPVLWATER_SUBLOC': subloc_gdf,}.items():
     logging.info(f'wegschrijven csv voor locationSet: {locationSet}')
     df = gdf.drop('geometry',axis=1)
-    df[['START','EIND']] = df.apply(update_csv, 
+    df[['START','EIND']] = df.apply(update_date, 
                                     args=(mpt_df, date_threshold), 
                                     axis=1,
                                     result_type="expand")
+    
+    if locationSet == 'OPVLWATER_WATERSTANDEN_AUTO':
+        grouper = mpt_hist_tags_df.groupby(['fews_locid'])
+        df['HIST_TAG'] = df.apply(update_histtag,
+                                    args=[grouper],
+                                    axis=1,
+                                    result_type="expand")
+        
+    elif locationSet == 'OPVLWATER_SUBLOC':
+        grouper = df.groupby(['PAR_ID'])
+        par_types_df = grouper['TYPE'].unique().apply(lambda x: sorted(x)).transform(lambda x: ','.join(x))
+        df['PAR_ID'] = gdf['LOC_ID'].str[0:-1] + '0'
+        df['ALLE_TYPES'] = df['PAR_ID'].apply(lambda x: par_types_df.loc[x])
 
     csv_file = csv_out.joinpath(config.locationSets[locationSet]['csvFile']['file'])
     if csv_file.suffix == '':
