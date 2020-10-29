@@ -811,7 +811,7 @@ loc_set_errors = {'locationId':[],
                   'missing_hloc':[],
                   'xy_par_not_same':[]}
 
-sets = {'waterstand':'WATERSTANDLOCATIES',
+sets = {'waterstandlocaties':'WATERSTANDLOCATIES',
         'sublocaties': 'KUNSTWERKEN'}
 
 for set_name,section_name in sets.items():
@@ -855,10 +855,10 @@ for set_name,section_name in sets.items():
             if not re.match(f'[A-Z]*_{loc_id[2:-2]}-K_[A-Z]*-{loc_type}[0-9]_{loc_functie}',loc_name):
                 error['loc_name_error'] = True
                 
-            if not row['HBOV'] in location_sets['waterstand']['gdf']['LOC_ID'].values:
+            if not row['HBOV'] in location_sets['waterstandlocaties']['gdf']['LOC_ID'].values:
                 error['missing_hbov'] = True
             
-            if not row['HBEN'] in location_sets['waterstand']['gdf']['LOC_ID'].values:
+            if not row['HBEN'] in location_sets['waterstandlocaties']['gdf']['LOC_ID'].values:
                 error['missing_hben'] = True
                 
             if not row['HBOVPS'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
@@ -878,7 +878,7 @@ for set_name,section_name in sets.items():
             if not re.match(f'[A-Z]*_{loc_id[2:-2]}-K_[A-Z]*',loc_name):
                 error['loc_name_error'] = True        
                 
-        elif set_name == 'waterstand':
+        elif set_name == 'waterstandlocaties':
             if not re.match(f'[A-Z]*_{loc_id[2:-2]}-w_.*',loc_name):
                 error['loc_name_error'] = True
     
