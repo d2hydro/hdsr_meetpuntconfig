@@ -170,10 +170,21 @@ class Config:
                 file = os.path.join(self.path,'MapLayerFiles',file)
                 x_attrib = location_set['csvFile']['x'].replace('%','')
                 y_attrib = location_set['csvFile']['y'].replace('%','')
+                if 'z' in location_set['csvFile'].keys():
+                    z_attrib = location_set['csvFile']['y'].replace('%','')
+                else: z_attrib = None
+                
                 gdf = gpd.read_file(file)
-                gdf['geometry'] = gdf.apply((lambda x: Point(float(x[x_attrib]),
-                                                             float(x[y_attrib]))),
-                                                                axis=1)
+                
+                if z_attrib:
+                    gdf['geometry'] = gdf.apply((lambda x: Point(float(x[x_attrib]),
+                                                                 float(x[y_attrib]),
+                                                                 float(x[z_attrib]))),
+                                                                    axis=1)
+                else:
+                    gdf['geometry'] = gdf.apply((lambda x: Point(float(x[x_attrib]),
+                                                                 float(x[y_attrib]))),
+                                                                    axis=1)
                 crs = None
                 if location_set['csvFile']['geoDatum'] in geo_datum.keys():
                     crs = geo_datum[location_set['csvFile']['geoDatum']]

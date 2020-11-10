@@ -47,7 +47,8 @@ warning_sheets = ['histTags_noMatch',
                   'timeSeries error',
                   'validation error',
                   'par mismatch',
-                  'locSet error']
+                  'locSet error',
+                  'hloc error']
 
 idmap_files = ['IdOPVLWATER',
               'IdOPVLWATER_HYMOS',
@@ -814,12 +815,17 @@ loc_set_errors = {'locationId':[],
 sets = {'waterstandlocaties':'WATERSTANDLOCATIES',
         'sublocaties': 'KUNSTWERKEN'}
 
+    
+    
+#%%
 for set_name,section_name in sets.items():
     logging.info(set_name)
     location_set = location_sets[set_name]
     location_gdf = location_set['gdf']
     csv_file = config.locationSets[location_set['id']]['csvFile']['file']
     int_locs = []
+    
+
     for idmap in ['IdOPVLWATER', 'IdOPVLWATER_HYMOS']:
         for section in idmap_sections[idmap][section_name]: 
             int_locs += [item['internalLocation'] for item in xml_to_dict(config.IdMapFiles[idmap],**section)['idMap']['map']]
@@ -852,7 +858,7 @@ for set_name,section_name in sets.items():
             loc_functie = row['FUNCTIE']
             loc_type = row['TYPE']
             
-            if not re.match(f'[A-Z]*_{loc_id[2:-2]}-K_[A-Z]*-{loc_type}[0-9]_{loc_functie}',loc_name):
+            if not re.match(f'[A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*-{loc_type}[0-9]_{loc_functie}',loc_name):
                 error['loc_name_error'] = True
                 
             if not row['HBOV'] in location_sets['waterstandlocaties']['gdf']['LOC_ID'].values:
@@ -875,11 +881,11 @@ for set_name,section_name in sets.items():
                     error['xy_par_not_same'] = True
         
         elif set_name == 'hoofdlocaties':
-            if not re.match(f'[A-Z]*_{loc_id[2:-2]}-K_[A-Z]*',loc_name):
+            if not re.match(f'[A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*',loc_name):
                 error['loc_name_error'] = True        
                 
         elif set_name == 'waterstandlocaties':
-            if not re.match(f'[A-Z]*_{loc_id[2:-2]}-w_.*',loc_name):
+            if not re.match(f'[A-Z ]*_{loc_id[2:-2]}-w_.*',loc_name):
                 error['loc_name_error'] = True
     
             if not row['PEILSCHAAL'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
@@ -913,7 +919,97 @@ if summary['locSet error'] == 0:
     logging.info('geen fouten in locationSets')
 else:
     logging.warning('{} fouten in locationSets'.format(summary['locSet error']))        
-       
+
+#%% hier moet par_gdf uit komen
+hloc_errors = {'LOC_ID':[],
+               'SUB_LOCS':[],
+               'LOC_NAME':[],
+               'GEOMETRY':[],
+               'SYSTEEM':[],
+               'RAYON':[],
+               'KOMPAS':[]}
+
+grouper = location_gdf.groupby('PAR_ID')
+par_dict = {'LOC_ID':[],
+            'LOC_NAME':[],
+            'X':[],
+            'Y':[],
+            'ALLE_TYPES':[],
+            'START':[],
+            'EIND':[],
+            'SYSTEEM':[],
+            'RAYON':[],
+            'KOMPAS':[]}
+
+for loc_id, gdf in grouper:
+    errors = dict.fromkeys(['LOC_NAME','GEOMETRY','SYSTEEM','RAYON','KOMPAS'],False)
+    fields = dict.fromkeys(par_dict.keys(),None)
+    fields['LOC_ID'] = loc_id
+    # controle subloc op 1 consistente parent sub-string
+    loc_names = np.unique(gdf['LOC_NAME'].str.extract(pat = f'([A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*)').values)
+    if not len(loc_names) == 1:
+        errors['LOC_NAME'] = ",".join(loc_names)
+    else:
+        fields['LOC_NAME'] = loc_names[0]
+    #controle subloc op 1 consistente locatie
+    geoms = gdf['geometry'].unique()
+    if not len(geoms) == 1:
+        errors['GEOMETRY'] = ",".join([f'({geom.x} {geom.y})' for geom in geoms])
+    else:
+        fields['X'] = geoms[0].x
+        fields['Y'] = geoms[0].y
+        
+    #wegschrijven alle types op sublocaties
+    all_types = list(gdf['TYPE'].unique())
+    all_types.sort()
+    fields['ALLE_TYPES'] = '/'.join(all_types)
+    
+    #wegschrijven start/eind uit min/max sublocaties
+    fields['START'] = gdf['START'].min()
+    fields['EIND'] = gdf['EIND'].max()
+    
+    #controle op unieke atributen
+    for attribuut in ['SYSTEEM','RAYON','KOMPAS']:
+        vals = gdf[attribuut].unique()
+        if not len(vals) == 1:
+            errors[attribuut] = "","".join(vals)
+        else:
+            fields[attribuut] = vals[0]     
+
+    # parent kan geschreven worden als alle subloc-waarden consistent zijn
+    if not None in fields.values():
+        for key,value in fields.items():
+            par_dict[key].append(value)
+            
+    
+    # als fout, dan opname in error-dict
+    if any(errors.values()):
+        hloc_errors['LOC_ID'].append(loc_id)
+        hloc_errors['SUB_LOCS'].append(','.join(gdf['LOC_ID'].values))
+        for key,value in errors.items():
+            if value == False:
+                value = ''
+            hloc_errors[key].append(value)
+            
+hoofdlocaties_gdf = pd.DataFrame(par_dict)
+columns = list(par_gdf.columns)
+drop_cols = [col for col in par_gdf.columns if (col in hoofdlocaties_gdf.columns) & (not col =='LOC_ID')]
+drop_cols = drop_cols + ['geometry']
+par_gdf = par_gdf.drop(drop_cols, axis=1)
+hoofdlocaties_gdf = hoofdlocaties_gdf.merge(par_gdf,on='LOC_ID')
+hoofdlocaties_gdf = hoofdlocaties_gdf[[col for col in columns if not col == 'geometry']]
+   
+
+config_df['hloc error'] = pd.DataFrame(hloc_errors)
+#opname in samenvatting
+
+summary['hloc error'] = len(config_df['hloc error'])
+
+if summary['hloc error'] == 0:
+    logging.info('geen fouten in aanmaken hoofdlocaties')
+else:
+    logging.warning('{} fouten bij aanmaken hoofdlocaties'.format(summary['hloc error']))   
+
 #%% wegschrijven naar excel
     
 #lees input xlsx en gooi alles weg behalve de fixed_sheets
