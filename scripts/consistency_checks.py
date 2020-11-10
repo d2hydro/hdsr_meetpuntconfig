@@ -73,9 +73,11 @@ idmap_sections = {'IdOPVLWATER':{'KUNSTWERKEN':[{'section_start': '<!--KUNSTWERK
 
 # exParameters per sub-loc type
 
-expars_allowed = {'pompvijzel': ['FQ.$', 'I.B$', 'IB.$', 'I.H$', 'IH.$', 'I.L$', 'IL.$', 'Q.$'],
-                  'stuw': ['SW.$', 'Q.$'],
-                  'schuif': ['ES.$', 'SP.$', 'SS.$', 'Q.$'],
+expars_allowed = {'pompvijzel': ['FQ.$', 'I.B$', 'IB.$', 'I.H$', 'IH.$', 'I.L$', 'IL.$', 'Q.$' , 'TT.$'],
+                  'stuw': ['SW.$', 'Q.$', 'ES.$'],
+                  'schuif': ['ES.$', 'SP.$', 'SS.$', 'Q.$', 'SM.$'],
+                  'afsluiter': ['ES.$'],
+                  'debietmeter': ['Q.$'],
                   'vispassage': ['ES.$', 'SP.$', 'SS.$', 'Q.$'],
                   'krooshek': ['HB.$', 'HO.$'],
                   'waterstand': ['HB.$', 'HO.$', 'H$']}
@@ -96,7 +98,7 @@ def idmap2tags(row,idmap):
     return fews_locs
 
 def update_hlocs(row):
-    '''functie voor het toevoegen van start en end-date op data-frame van hoofdlocaties in de apply-method'''
+    '''functie voor het toevoegen van start en end-date op data-frame van hoofdloc in de apply-method'''
     
     loc_id = row.name
     start_date = row['STARTDATE']
@@ -277,7 +279,7 @@ mpt_df = mpt_df.sort_index(axis=0)
 mpt_df.columns = ['STARTDATE','ENDDATE']
 mpt_df.index.name = 'LOC_ID'
 
-# alle hoofdlocaties waar geen histag op binnekomt toevoegen
+# alle hoofdloc waar geen histag op binnekomt toevoegen
 kw_locs = list(mpt_df[mpt_df.index.str.contains('KW', regex=False)].index)
 h_locs = np.unique(['{}0'.format(loc[0:-1]) for loc in kw_locs])
 h_locs_missing = [loc for loc in h_locs if not loc in list(mpt_df.index)]
@@ -331,10 +333,15 @@ else:
 
 #%% consistentie externe parameters met interne parameters/locaties
 logging.info('controle foutieve en missende ex-parameters & niet opgenomen inlocs')
+
+if 'externalParametersAllowed' in ini_config.keys():
+    expars_allowed = {key: value.replace(" ","").split(',') 
+                      for key, value in ini_config['externalParametersAllowed'].items()}
+    
 hoofdloc_gdf = config.get_locations('OPVLWATER_HOOFDLOC')
 subloc_gdf = config.get_locations('OPVLWATER_SUBLOC')
-waterstand_gdf = config.get_locations('OPVLWATER_WATERSTANDEN_AUTO')
-msw_gdf = config.get_locations('MSW_STATIONS')
+waterstandloc_gdf = config.get_locations('OPVLWATER_WATERSTANDEN_AUTO')
+mswloc_gdf = config.get_locations('MSW_STATIONS')
 
 ex_par_errors = {'internalLocation':[],
                  'locationType':[],
@@ -342,7 +349,8 @@ ex_par_errors = {'internalLocation':[],
                  'types':[],
                  'FQ':[],
                  'I.X':[],
-                 'IX.':[]}
+                 'IX.':[],
+                 'SS./SM.':[]}
 
 ex_par_missing = {'internalLocation':[],
                   'locationType':[],
@@ -359,7 +367,7 @@ idmap_df = pd.DataFrame.from_dict(idmap_dict['IdOPVLWATER'])
 for loc_group in idmap_df.groupby('internalLocation'):
     #initieer een aantal variabelen
     missings = dict.fromkeys(['QR','QS','HS'],False)
-    errors = dict.fromkeys(['I.X','IX.','FQ'],False)
+    errors = dict.fromkeys(['I.X','IX.','FQ', 'SS./SM.'],False)
     
     #interne locatie en externe parameters
     int_loc = loc_group[0]
@@ -374,10 +382,10 @@ for loc_group in idmap_df.groupby('internalLocation'):
         loc_properties = subloc_gdf[subloc_gdf['LOC_ID'] == int_loc]
         loc_type = 'subloc'
         regexes = ['HR.$']
-    elif int_loc in waterstand_gdf['LOC_ID'].values:
-        loc_type = 'waterstand'
-    elif int_loc in msw_gdf['LOC_ID'].values:
-        loc_type = 'msw'
+    elif int_loc in waterstandloc_gdf['LOC_ID'].values:
+        loc_type = 'waterstandloc'
+    elif int_loc in mswloc_gdf['LOC_ID'].values:
+        loc_type = 'mswloc'
     else:
         loc_type = None
         int_loc_missing += [int_loc]
@@ -386,10 +394,11 @@ for loc_group in idmap_df.groupby('internalLocation'):
     if loc_type in ['hoofdloc', 'subloc']:
         all_types = loc_properties['ALLE_TYPES'].values[0].split("/")
         all_types = [item.lower() for item in all_types]
-    elif loc_type == 'waterstand':
-        all_types = ['waterstand']
+    elif loc_type == 'waterstandloc':
+        all_types = ['waterstandloc']
     
     if loc_type == 'subloc':
+        sub_type = subloc_gdf[subloc_gdf['LOC_ID'] == int_loc]['TYPE'].values[0]
         
         #zoeken naar foutief toegekende ex_pars
         regexes += [j for i in
@@ -398,7 +407,12 @@ for loc_group in idmap_df.groupby('internalLocation'):
         regexes += list(dict.fromkeys(regexes))
         
         ex_par_error = [ex_par for ex_par in ex_pars if not any([regex.match(ex_par) for regex in [re.compile(rex) for rex in regexes]])]
-         
+        
+        # als sub_type = schuif dan SM. of SS.
+        if sub_type == 'schuif':
+            if not any([ex_par for ex_par in ex_pars_gen if ex_par in ['SS.', 'SM.']]):
+                errors['SS./SM.'] = True
+        
         # als wel/niet I.B dan ook wel/niet IB.
         if any([ex_par for ex_par in ex_pars_gen if ex_par in ['I.B', 'I.H', 'I.L']]):
             if not any([ex_par for ex_par in ex_pars_gen if ex_par in ['IB.', 'IH.', 'IL.']]):
@@ -492,7 +506,7 @@ for loc_group in idmap_df.groupby('externalLocation'):
             int_loc_error = [int_loc for int_loc in int_locs if 
                              not bool(re.match(f'...{ex_loc}..$',int_loc))]
          
-        # opgesplitste locaties; ex-loc altijd naar 1 unieke hoofdlocatie + sublocaties
+        # opgesplitste locaties; ex-loc altijd naar 1 unieke hoofdlocatie + subloc
         else:
             for loc_type in ['KW','OW']:
                 int_locs_select = [int_loc for int_loc in int_locs 
@@ -508,7 +522,7 @@ for loc_group in idmap_df.groupby('externalLocation'):
             int_loc_error += [int_loc for int_loc in int_locs if 
                               not bool(re.match(f'..{ex_loc}..$',int_loc))]
         
-        # opgesplitste locaties; ex-loc altijd naar 1 unieke hoofdlocatie + sublocaties
+        # opgesplitste locaties; ex-loc altijd naar 1 unieke hoofdlocatie + subloc
         else:
             for loc_type in ['KW','OW']:
                 int_locs_select = [int_loc for int_loc in int_locs 
@@ -588,20 +602,20 @@ for loc_group, group_df in idmap_subloc_df.groupby('loc_groep'):
     group_df['ex_loc_group'] = group_df['externalLocation'].apply((lambda x: ex_locs_dict[x]))
  
     for int_loc, loc_df in group_df.groupby('internalLocation'):
-        loc_type = subloc_gdf[subloc_gdf['LOC_ID'] == int_loc]['TYPE'].values[0]
+        sub_type = subloc_gdf[subloc_gdf['LOC_ID'] == int_loc]['TYPE'].values[0]
         ex_pars = np.unique(loc_df['externalParameter'].values)
         int_pars = np.unique(loc_df['internalParameter'].values)
         ex_locs = np.unique(loc_df['externalLocation'].values)
         
-        if loc_type in ['krooshek','debietmeter']:
+        if sub_type in ['krooshek','debietmeter']:
             if any([re.match('HR.',ex_par) for ex_par in ex_pars]):
                 #krooshek/debietmeter met stuurpeil = fout
                 ts_errors['internalLocation'].append(int_loc)
                 ts_errors['internalParameters'].append(",".join(int_pars))
                 ts_errors['externalParameters'].append(",".join(ex_pars))
                 ts_errors['externalLocations'].append(','.join(ex_locs))
-                ts_errors['type'].append(loc_type)
-                ts_errors['fout'].append(f'{loc_type} met stuurpeil')
+                ts_errors['type'].append(sub_type)
+                ts_errors['fout'].append(f'{sub_type} met stuurpeil')
         
         else: #geen krooshek of debietmeter
             # geen sp, maar wel sp op andere subloc = fout
@@ -613,8 +627,8 @@ for loc_group, group_df in idmap_subloc_df.groupby('loc_groep'):
                     ts_errors['internalParameters'].append(",".join(int_pars))
                     ts_errors['externalParameters'].append(",".join(ex_pars))
                     ts_errors['externalLocations'].append(','.join(ex_locs))
-                    ts_errors['type'].append(loc_type)
-                    ts_errors['fout'].append(f'{loc_type} zonder stuurpeil ({",".join(sp_locs)} wel)')
+                    ts_errors['type'].append(sub_type)
+                    ts_errors['fout'].append(f'{sub_type} zonder stuurpeil ({",".join(sp_locs)} wel)')
                     
             else: #krooshek/debietmeter met stuurpeil
                 # >1 sp zonder andere interne parameter = fout
@@ -630,7 +644,7 @@ for loc_group, group_df in idmap_subloc_df.groupby('loc_groep'):
                         ts_errors['internalParameters'].append(",".join(int_pars))
                         ts_errors['externalParameters'].append(",".join(ex_pars))
                         ts_errors['externalLocations'].append(','.join(ex_locs))
-                        ts_errors['type'].append(loc_type)
+                        ts_errors['type'].append(sub_type)
                         ts_errors['fout'].append(f'{",".join(int_par)} gekoppeld aan 1 sp-serie (exPar: {ex_par}, exLoc(s)): {",".join(ex_locs)}')
                         
                     other_series = [series for idy, series in enumerate(sp_series) if not idy == idx]
@@ -643,7 +657,7 @@ for loc_group, group_df in idmap_subloc_df.groupby('loc_groep'):
                         ts_errors['internalParameters'].append(",".join(int_pars))
                         ts_errors['externalParameters'].append(",".join(ex_pars))
                         ts_errors['externalLocations'].append(','.join(ex_locs))
-                        ts_errors['type'].append(loc_type)
+                        ts_errors['type'].append(sub_type)
                         ts_errors['fout'].append(f'{",".join(conflicting_pars)} gekoppeld aan sp-serie (exPar: {ex_par}, exLoc(s)): {",".join(ex_locs)}')
                                
 config_df['timeSeries error'] = pd.DataFrame(ts_errors)
@@ -666,7 +680,7 @@ valid_errors = {'internalLocation':[],
 
 location_sets_dict = xml_to_dict(config.RegionConfigFiles['LocationSets'])['locationSets']['locationSet']
 for set_name in ini_config['validationRules'].keys():
-    #set_name = 'sublocaties'
+    #set_name = 'subloc'
     location_set = location_sets[set_name]
     location_set_meta = next(loc_set for loc_set in location_sets_dict if loc_set['id'] == location_set['id'])['csvFile']
     location_set_gdf = location_set['gdf']
@@ -812,8 +826,8 @@ loc_set_errors = {'locationId':[],
                   'missing_hloc':[],
                   'xy_par_not_same':[]}
 
-sets = {'waterstandlocaties':'WATERSTANDLOCATIES',
-        'sublocaties': 'KUNSTWERKEN'}
+sets = {'waterstandloc':'WATERSTANDLOCATIES',
+        'subloc': 'KUNSTWERKEN'}
 
     
     
@@ -830,11 +844,11 @@ for set_name,section_name in sets.items():
         for section in idmap_sections[idmap][section_name]: 
             int_locs += [item['internalLocation'] for item in xml_to_dict(config.IdMapFiles[idmap],**section)['idMap']['map']]
     
-    if set_name == 'sublocaties':
+    if set_name == 'subloc':
         int_locs = [loc for loc in int_locs if not loc[-1] == '0']
-        par_gdf = location_sets['hoofdlocaties']['gdf']
+        par_gdf = location_sets['hoofdloc']['gdf']
         
-    elif set_name == 'hoofdlocaties':
+    elif set_name == 'hoofdloc':
         int_locs = [loc for loc in int_locs if loc[-1] == '0']
     
     #idx, row = list(location_gdf.iterrows())[0]
@@ -853,18 +867,18 @@ for set_name,section_name in sets.items():
         loc_id = row['LOC_ID']
         loc_name = row['LOC_NAME']
         
-        if set_name == 'sublocaties':
+        if set_name == 'subloc':
             
             loc_functie = row['FUNCTIE']
-            loc_type = row['TYPE']
+            sub_type = row['TYPE']
             
-            if not re.match(f'[A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*-{loc_type}[0-9]_{loc_functie}',loc_name):
+            if not re.match(f'[A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*-{sub_type}[0-9]_{loc_functie}',loc_name):
                 error['loc_name_error'] = True
                 
-            if not row['HBOV'] in location_sets['waterstandlocaties']['gdf']['LOC_ID'].values:
+            if not row['HBOV'] in location_sets['waterstandloc']['gdf']['LOC_ID'].values:
                 error['missing_hbov'] = True
             
-            if not row['HBEN'] in location_sets['waterstandlocaties']['gdf']['LOC_ID'].values:
+            if not row['HBEN'] in location_sets['waterstandloc']['gdf']['LOC_ID'].values:
                 error['missing_hben'] = True
                 
             if not row['HBOVPS'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
@@ -873,18 +887,18 @@ for set_name,section_name in sets.items():
             if not row['HBENPS'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
                 error['missing_hbenps'] = True
                 
-            if not row['PAR_ID'] in location_sets['hoofdlocaties']['gdf']['LOC_ID'].values:
+            if not row['PAR_ID'] in location_sets['hoofdloc']['gdf']['LOC_ID'].values:
                 error['missing_hloc'] = True
             
             else:
                 if not par_gdf[par_gdf['LOC_ID'] == row['PAR_ID']]['geometry'].values[0].equals(row['geometry']):
                     error['xy_par_not_same'] = True
         
-        elif set_name == 'hoofdlocaties':
+        elif set_name == 'hoofdloc':
             if not re.match(f'[A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*',loc_name):
                 error['loc_name_error'] = True        
                 
-        elif set_name == 'waterstandlocaties':
+        elif set_name == 'waterstandloc':
             if not re.match(f'[A-Z ]*_{loc_id[2:-2]}-w_.*',loc_name):
                 error['loc_name_error'] = True
     
@@ -1086,7 +1100,7 @@ def update_histtag(row,grouper):
 date_threshold = mpt_df['ENDDATE'].max() - pd.Timedelta(weeks=26)
 
 for locationSet, gdf in {'OPVLWATER_HOOFDLOC': hoofdloc_gdf,
-                         'OPVLWATER_WATERSTANDEN_AUTO': waterstand_gdf,
+                         'OPVLWATER_WATERSTANDEN_AUTO': waterstandloc_gdf,
                          'OPVLWATER_SUBLOC': subloc_gdf,}.items():
     logging.info(f'wegschrijven csv voor locationSet: {locationSet}')
     df = gdf.drop('geometry',axis=1)
