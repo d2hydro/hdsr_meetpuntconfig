@@ -165,8 +165,8 @@ except Exception as e:
     sys.exit()
 
 config_df = pd.read_excel(consistency_in,sheet_name=None,engine='openpyxl')
-if not 'histTag_ignore' in config_df.keys():
-    logging.error('werkblad "histTag_ignore" mist in {}'.format(consistency_in))
+if not (('histTag_ignore' in config_df.keys()) | (mpt_ignore != None)):
+    logging.error('specificeer een histTag_ignore werkblad in de consistency.xlsx of een csv-file in de ini-file')
     sys.exit()
     
 # weggooien van alle output-sheets, behalve degenen opgeschoond
@@ -234,6 +234,13 @@ for col in dtype_cols:
         sys.exit()
 
 #%% filteren hist_tags op alles wat niet in ignored staat
+if mpt_ignore:
+    logging.info(f'histag_ignore wordt gelezen uit {mpt_ignore.absolute().resolve()}')
+    config_df['histTag_ignore'] = pd.read_csv(mpt_ignore,sep=None,header=0,engine='python') 
+else:
+    logging.info(f'histag_ignore wordt gelezen uit werkblad "histTag_ignore" in {consistency_in.absolute().resolve()}')
+config_df['histTag_ignore']['UNKNOWN_SERIE'] = config_df['histTag_ignore']['UNKNOWN_SERIE'].str.replace('#','')  
+
 hist_tags_df = hist_tags_org_df.copy()
 hist_tags_df['fews_locid'] = hist_tags_org_df.apply(idmap2tags, args=[idmap_total], axis=1)
 hist_tags_no_match_df = hist_tags_df[hist_tags_df['fews_locid'].isna()]
@@ -250,9 +257,6 @@ else:
     logging.info('alle histTags zijn opgenomen in idmap')
 
 #%% wegschrijven van ids die ten onrechte in ignore-lijst staan
-if mpt_ignore:
-   config_df['histTag_ignore'] = pd.read_csv(mpt_ignore,sep=';',header=0)  
-config_df['histTag_ignore']['UNKNOWN_SERIE'] = config_df['histTag_ignore']['UNKNOWN_SERIE'].str.replace('#','')   
 hist_tags_opvlwater_df = hist_tags_org_df.copy()
 hist_tags_opvlwater_df['fews_locid'] = hist_tags_org_df.apply(idmap2tags, args=[idmap_dict['IdOPVLWATER']], axis=1)
 hist_tags_opvlwater_df = hist_tags_opvlwater_df[hist_tags_opvlwater_df['fews_locid'].notna()]
@@ -317,6 +321,7 @@ for idmap_file in idmap_files:
     summary['dubbele idmaps {}'.format(idmap_file)] = len(idmap_doubles)
 
 #%% consistentie parameters: zijn alle interne parameters opgenomen in parameters.xml
+logging.info('zoeken op missende interne parameters')
 config_parameters = list(config.get_parameters(dict_keys='parameters').keys())
 id_map_parameters = [id_map['internalParameter'] for id_map in idmap_total]
 params_missing = [parameter for parameter in id_map_parameters 
@@ -327,9 +332,105 @@ summary['missende parameters'] = len(params_missing)
 if len(params_missing) == 0:
     logging.info('alle parameters in idMaps zijn opgenomen in config')
 else:
-    logging.warning('{} uit idMaps missen in config'.format(len(params_missing)))
+    logging.warning('{} parameter(s) in idMaps missen in config'.format(len(params_missing)))
     config_df['params_missing'] =  pd.DataFrame({'parameters': params_missing})
     config_df['params_missing'] = config_df['params_missing'].set_index('parameters')
+
+#%% controle op consistentie sublocs t.b.v. wegschrijven hoofdloc_gdf
+hoofdloc_gdf = config.get_locations('OPVLWATER_HOOFDLOC')
+subloc_gdf = config.get_locations('OPVLWATER_SUBLOC')
+
+hloc_errors = {'LOC_ID':[],
+               'SUB_LOCS':[],
+               'LOC_NAME':[],
+               'GEOMETRY':[],
+               'SYSTEEM':[],
+               'RAYON':[],
+               'KOMPAS':[]}
+
+grouper = subloc_gdf.groupby('PAR_ID')
+par_dict = {'LOC_ID':[],
+            'LOC_NAME':[],
+            'X':[],
+            'Y':[],
+            'ALLE_TYPES':[],
+            'START':[],
+            'EIND':[],
+            'SYSTEEM':[],
+            'RAYON':[],
+            'KOMPAS':[]}
+
+for loc_id, gdf in grouper:
+    errors = dict.fromkeys(['LOC_NAME','GEOMETRY','SYSTEEM','RAYON','KOMPAS'],False)
+    fields = dict.fromkeys(par_dict.keys(),None)
+    fields['LOC_ID'] = loc_id
+    # controle subloc op 1 consistente parent sub-string
+    loc_names = np.unique(gdf['LOC_NAME'].str.extract(pat = f'([A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*)').values)
+    if not len(loc_names) == 1:
+        errors['LOC_NAME'] = ",".join(loc_names)
+    else:
+        fields['LOC_NAME'] = loc_names[0]
+    #controle subloc op 1 consistente locatie
+    geoms = gdf['geometry'].unique()
+    if not len(geoms) == 1:
+        errors['GEOMETRY'] = ",".join([f'({geom.x} {geom.y})' for geom in geoms])
+    else:
+        fields['X'] = geoms[0].x
+        fields['Y'] = geoms[0].y
+        
+    #wegschrijven alle types op sublocaties
+    all_types = list(gdf['TYPE'].unique())
+    all_types.sort()
+    fields['ALLE_TYPES'] = '/'.join(all_types)
+    
+    #wegschrijven start/eind uit min/max sublocaties
+    fields['START'] = gdf['START'].min()
+    fields['EIND'] = gdf['EIND'].max()
+    
+    #controle op unieke atributen
+    for attribuut in ['SYSTEEM','RAYON','KOMPAS']:
+        vals = gdf[attribuut].unique()
+        if not len(vals) == 1:
+            errors[attribuut] = "","".join(vals)
+        else:
+            fields[attribuut] = vals[0]     
+
+    # parent kan geschreven worden als alle subloc-waarden consistent zijn
+    if not None in fields.values():
+        for key,value in fields.items():
+            par_dict[key].append(value)
+            
+    
+    # als fout, dan opname in error-dict
+    if any(errors.values()):
+        hloc_errors['LOC_ID'].append(loc_id)
+        hloc_errors['SUB_LOCS'].append(','.join(gdf['LOC_ID'].values))
+        for key,value in errors.items():
+            if value == False:
+                value = ''
+            hloc_errors[key].append(value)
+
+config_df['hloc error'] = pd.DataFrame(hloc_errors)
+#opname in samenvatting
+
+summary['hloc error'] = len(config_df['hloc error'])
+
+if summary['hloc error'] == 0:
+    logging.info('geen fouten in aanmaken hoofdlocaties')
+    hoofdloc_gdf = pd.DataFrame(par_dict)
+    columns = list(par_gdf.columns)
+    drop_cols = [col for col in par_gdf.columns if (col in hoofdloc_gdf.columns) & (not col =='LOC_ID')]
+    drop_cols = drop_cols + ['geometry']
+    par_gdf = par_gdf.drop(drop_cols, axis=1)
+    hoofdloc_gdf = hoofdloc_gdf.merge(par_gdf,on='LOC_ID')
+    hoofdloc_gdf = hoofdloc_gdf[[col for col in columns if not col == 'geometry']]
+    
+    
+else:
+    logging.warning('{} fouten bij aanmaken hoofdlocaties'.format(summary['hloc error']))
+    logging.warning('hoofdlocaties worden alleen opnieuw geschreven vanuit sublocaties wanneer de fouten zijn opgelost')  
+
+
 
 #%% consistentie externe parameters met interne parameters/locaties
 logging.info('controle foutieve en missende ex-parameters & niet opgenomen inlocs')
@@ -338,8 +439,6 @@ if 'externalParametersAllowed' in ini_config.keys():
     expars_allowed = {key: value.replace(" ","").split(',') 
                       for key, value in ini_config['externalParametersAllowed'].items()}
     
-hoofdloc_gdf = config.get_locations('OPVLWATER_HOOFDLOC')
-subloc_gdf = config.get_locations('OPVLWATER_SUBLOC')
 waterstandloc_gdf = config.get_locations('OPVLWATER_WATERSTANDEN_AUTO')
 mswloc_gdf = config.get_locations('MSW_STATIONS')
 
@@ -947,96 +1046,6 @@ if summary['locSet error'] == 0:
     logging.info('geen fouten in locationSets')
 else:
     logging.warning('{} fouten in locationSets'.format(summary['locSet error']))        
-
-#%% hier moet par_gdf uit komen
-hloc_errors = {'LOC_ID':[],
-               'SUB_LOCS':[],
-               'LOC_NAME':[],
-               'GEOMETRY':[],
-               'SYSTEEM':[],
-               'RAYON':[],
-               'KOMPAS':[]}
-
-grouper = location_gdf.groupby('PAR_ID')
-par_dict = {'LOC_ID':[],
-            'LOC_NAME':[],
-            'X':[],
-            'Y':[],
-            'ALLE_TYPES':[],
-            'START':[],
-            'EIND':[],
-            'SYSTEEM':[],
-            'RAYON':[],
-            'KOMPAS':[]}
-
-for loc_id, gdf in grouper:
-    errors = dict.fromkeys(['LOC_NAME','GEOMETRY','SYSTEEM','RAYON','KOMPAS'],False)
-    fields = dict.fromkeys(par_dict.keys(),None)
-    fields['LOC_ID'] = loc_id
-    # controle subloc op 1 consistente parent sub-string
-    loc_names = np.unique(gdf['LOC_NAME'].str.extract(pat = f'([A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*)').values)
-    if not len(loc_names) == 1:
-        errors['LOC_NAME'] = ",".join(loc_names)
-    else:
-        fields['LOC_NAME'] = loc_names[0]
-    #controle subloc op 1 consistente locatie
-    geoms = gdf['geometry'].unique()
-    if not len(geoms) == 1:
-        errors['GEOMETRY'] = ",".join([f'({geom.x} {geom.y})' for geom in geoms])
-    else:
-        fields['X'] = geoms[0].x
-        fields['Y'] = geoms[0].y
-        
-    #wegschrijven alle types op sublocaties
-    all_types = list(gdf['TYPE'].unique())
-    all_types.sort()
-    fields['ALLE_TYPES'] = '/'.join(all_types)
-    
-    #wegschrijven start/eind uit min/max sublocaties
-    fields['START'] = gdf['START'].min()
-    fields['EIND'] = gdf['EIND'].max()
-    
-    #controle op unieke atributen
-    for attribuut in ['SYSTEEM','RAYON','KOMPAS']:
-        vals = gdf[attribuut].unique()
-        if not len(vals) == 1:
-            errors[attribuut] = "","".join(vals)
-        else:
-            fields[attribuut] = vals[0]     
-
-    # parent kan geschreven worden als alle subloc-waarden consistent zijn
-    if not None in fields.values():
-        for key,value in fields.items():
-            par_dict[key].append(value)
-            
-    
-    # als fout, dan opname in error-dict
-    if any(errors.values()):
-        hloc_errors['LOC_ID'].append(loc_id)
-        hloc_errors['SUB_LOCS'].append(','.join(gdf['LOC_ID'].values))
-        for key,value in errors.items():
-            if value == False:
-                value = ''
-            hloc_errors[key].append(value)
-            
-hoofdlocaties_gdf = pd.DataFrame(par_dict)
-columns = list(par_gdf.columns)
-drop_cols = [col for col in par_gdf.columns if (col in hoofdlocaties_gdf.columns) & (not col =='LOC_ID')]
-drop_cols = drop_cols + ['geometry']
-par_gdf = par_gdf.drop(drop_cols, axis=1)
-hoofdlocaties_gdf = hoofdlocaties_gdf.merge(par_gdf,on='LOC_ID')
-hoofdlocaties_gdf = hoofdlocaties_gdf[[col for col in columns if not col == 'geometry']]
-   
-
-config_df['hloc error'] = pd.DataFrame(hloc_errors)
-#opname in samenvatting
-
-summary['hloc error'] = len(config_df['hloc error'])
-
-if summary['hloc error'] == 0:
-    logging.info('geen fouten in aanmaken hoofdlocaties')
-else:
-    logging.warning('{} fouten bij aanmaken hoofdlocaties'.format(summary['hloc error']))   
 
 #%% wegschrijven naar excel
     
