@@ -361,11 +361,12 @@ par_dict = {'LOC_ID':[],
             'KOMPAS':[]}
 
 for loc_id, gdf in grouper:
+    caw_code = loc_id[2:-2]
     errors = dict.fromkeys(['LOC_NAME','GEOMETRY','SYSTEEM','RAYON','KOMPAS'],False)
     fields = dict.fromkeys(par_dict.keys(),None)
     fields['LOC_ID'] = loc_id
     # controle subloc op 1 consistente parent sub-string
-    loc_names = np.unique(gdf['LOC_NAME'].str.extract(pat = f'([A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*)').values)
+    loc_names = np.unique(gdf['LOC_NAME'].str.extract(pat = f'([A-Z0-9 ]*_{caw_code}-K_[A-Z0-9 ]*)').values)
     if not len(loc_names) == 1:
         errors['LOC_NAME'] = ",".join(loc_names)
     else:
@@ -921,7 +922,10 @@ logging.info('validatie locatieSets')
 loc_set_errors = {'locationId':[],
                   'csv_file':[],
                   'location_name':[],
-                  'loc_name_error':[],
+                  'type':[],
+                  'functie': [],
+                  'name_error':[],
+                  'caw_name_consistent':[],
                   'missing_in_map':[],
                   'missing_in_set':[],
                   'missing_peilschaal':[],
@@ -935,9 +939,7 @@ loc_set_errors = {'locationId':[],
 sets = {'waterstandloc':'WATERSTANDLOCATIES',
         'subloc': 'KUNSTWERKEN'}
 
-    
-    
-#%%
+   
 '''
 ToDo:
     missing_in_set: 
@@ -966,8 +968,11 @@ for set_name,section_name in sets.items():
     
     #idx, row = list(location_gdf.iterrows())[0]
     for idx, row in list(location_gdf.iterrows()):
-        error = {'loc_name_error':False,
+        error = {'name_error':False,
+                 'caw_name_consistent':False,
                  'missing_in_map':False,
+                 'type':'',
+                 'functie':'',
                  'missing_in_set':False,
                  'missing_peilschaal':False,
                  'missing_hbov':False,
@@ -978,15 +983,33 @@ for set_name,section_name in sets.items():
                  'xy_par_not_same':False}
         
         loc_id = row['LOC_ID']
+        caw_code = loc_id[2:-2]
         loc_name = row['LOC_NAME']
+    
         
         if set_name == 'subloc':
             
             loc_functie = row['FUNCTIE']
             sub_type = row['TYPE']
             
-            if not re.match(f'[A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*-{sub_type}[0-9]_{loc_functie}',loc_name):
-                error['loc_name_error'] = True
+            if sub_type in ['afsluiter', 'debietmeter', 'krooshek', 'vispassage']:
+                if not re.match(f'[A-Z0-9 ]*_{caw_code}-K_[A-Z0-9 ]*-{sub_type}[0-9]',loc_name):
+                    error['name_error'] = True
+                    error['type'] = sub_type
+                    error['functie'] = loc_functie
+            else:
+                if not re.match(f'[A-Z0-9 ]*_{caw_code}-K_[A-Z0-9 ]*-{sub_type}[0-9]_{loc_functie}',loc_name):
+                    error['name_error'] = True
+                    error['type'] = sub_type
+                    error['functie'] = loc_functie
+            
+            if not error['name_error']:
+                caw_name = re.match(f'([A-Z0-9 ]*)_',loc_name).group(1)
+                if not all(location_gdf[location_gdf['LOC_ID'].str.match(
+                        f'..{caw_code}')]['LOC_NAME'].str.match(
+                            f'({caw_name}_{caw_code}-K)')
+                            ):
+                                error['caw_name_consistent'] = True
                 
             if not row['HBOV'] in location_sets['waterstandloc']['gdf']['LOC_ID'].values:
                 error['missing_hbov'] = True
@@ -1008,12 +1031,20 @@ for set_name,section_name in sets.items():
                     error['xy_par_not_same'] = True
         
         elif set_name == 'hoofdloc':
-            if not re.match(f'[A-Z ]*_{loc_id[2:-2]}-K_[A-Z ]*',loc_name):
-                error['loc_name_error'] = True        
+            if not re.match(f'[A-Z0-9 ]*_{caw_code}-K_[A-Z0-9 ]*',loc_name):
+                error['name_error'] = True        
                 
         elif set_name == 'waterstandloc':
-            if not re.match(f'[A-Z ]*_{loc_id[2:-2]}-w_.*',loc_name):
-                error['loc_name_error'] = True
+            if not re.match(f'[A-Z0-9 ]*_{caw_code}-w_.*',loc_name):
+                error['name_error'] = True
+            
+            if not error['name_error']:
+                caw_name = re.match(f'([A-Z0-9 ]*)_',loc_name).group(1)
+                if not all(location_gdf[location_gdf['LOC_ID'].str.match(
+                        f'..{caw_code}')]['LOC_NAME'].str.match(
+                            f'({caw_name}_{caw_code}-w)')
+                            ):
+                                error['caw_name_consistent'] = True
     
             if not row['PEILSCHAAL'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
                 error['missing_peilschaal'] = True
