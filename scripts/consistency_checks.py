@@ -434,7 +434,7 @@ else:
 
 
 #%% consistentie externe parameters met interne parameters/locaties
-logging.info('controle foutieve en missende ex-parameters & niet opgenomen inlocs')
+logging.info('controle foutieve ex-parameters & niet opgenomen inlocs')
 
 if 'externalParametersAllowed' in ini_config.keys():
     expars_allowed = {key: value.replace(" ","").split(',') 
@@ -452,26 +452,18 @@ ex_par_errors = {'internalLocation':[],
                  'IX.':[],
                  'SS./SM.':[]}
 
-ex_par_missing = {'internalLocation':[],
-                  'locationType':[],
-                  'exPars':[],
-                  'QR':[],
-                  'QS':[],
-                  'HS':[]}
-
 int_loc_missing = []
 
 #maak een data-frame zodat we kunnen groeperen bij internalLocation
 idmap_df = pd.DataFrame.from_dict(idmap_dict['IdOPVLWATER'])
 
-for loc_group in idmap_df.groupby('internalLocation'):
+for int_loc, loc_group in idmap_df.groupby('internalLocation'):
     #initieer een aantal variabelen
-    missings = dict.fromkeys(['QR','QS','HS'],False)
+    
     errors = dict.fromkeys(['I.X','IX.','FQ', 'SS./SM.'],False)
     
     #interne locatie en externe parameters
-    int_loc = loc_group[0]
-    ex_pars = np.unique(loc_group[1]['externalParameter'].values)
+    ex_pars = np.unique(loc_group['externalParameter'].values)
     ex_pars_gen = [re.sub("\d", ".", ex_par) for ex_par in ex_pars]
     
     #vaststellen locatie-type
@@ -531,17 +523,7 @@ for loc_group in idmap_df.groupby('internalLocation'):
         regexes = ['HS.$', 'QR.$', 'QS.$', 'WR', 'WS']
         
         ex_par_error = [ex_par for ex_par in ex_pars if not any([regex.match(ex_par) for regex in [re.compile(rex) for rex in regexes]])]
-        
-        #is er een HS?
-        if not ('HS.' in ex_pars_gen):
-            missings['HS'] = True
-            
-        if not ('QR.' in ex_pars_gen):
-            missings['QR'] = True
-            
-        if not ('QS.' in ex_pars_gen):
-            missings['QS'] = True
-            
+                   
     else:
         ex_par_error = []
             
@@ -554,6 +536,59 @@ for loc_group in idmap_df.groupby('internalLocation'):
         for key, value in errors.items():
             ex_par_errors[key].append(value)
         
+    
+#opname in data-frame           
+config_df['exPar error'] = pd.DataFrame(ex_par_errors)
+config_df['intLoc missing'] = pd.DataFrame({'internalLocation':int_loc_missing})
+
+#opname in samenvatting
+summary['ExPar errors'] = len(config_df['exPar error'])
+summary['IntLoc missing'] = len(config_df['intLoc missing'])
+
+#loggen van resultaat
+if summary['ExPar errors'] == 0:
+    logging.info('geen ExPar errors')
+else:
+  logging.warning('{} locaties met ExPar errors'.format(summary['ExPar errors']))
+      
+if summary['IntLoc missing'] == 0:
+    logging.info('alle interne locaties uit idmap opgenomen in locationSets')
+else:
+    logging.warning('{} interne locaties niet opgenomen in locationSets'.format(summary['IntLoc missing']))                    
+
+#%% expar missings
+logging.info('controle missende ex-parameters')
+ex_par_missing = {'internalLocation':[],
+                  'locationType':[],
+                  'exPars':[],
+                  'QR':[],
+                  'QS':[],
+                  'HS':[]}
+
+grouper = idmap_df.groupby('internalLocation')
+for index, row in hoofdloc_gdf.iterrows():
+    missings = dict.fromkeys(['QR','QS','HS'],False)
+    int_loc = row['LOC_ID']
+    
+    loc_group = next((df for loc,df in idmap_df.groupby('internalLocation') if loc == int_loc), pd.DataFrame())
+    
+    if not loc_group.empty:
+        ex_pars = np.unique(loc_group['externalParameter'].values)
+        ex_pars_gen = [re.sub("\d", ".", ex_par) for ex_par in ex_pars]
+    else:
+        ex_pars = []
+        ex_pars_gen = []
+    
+    #is er een HS?
+    if not ('HS.' in ex_pars_gen):
+        missings['HS'] = True
+        
+    if not ('QR.' in ex_pars_gen):
+        missings['QR'] = True
+        
+    if not ('QS.' in ex_pars_gen):
+        missings['QS'] = True
+        
     # rapporteren missings
     if any(missings.values()):
         ex_par_missing['internalLocation'].append(int_loc)
@@ -561,28 +596,15 @@ for loc_group in idmap_df.groupby('internalLocation'):
         ex_par_missing['exPars'].append(','.join(ex_pars))
         for key, value in missings.items():
             ex_par_missing[key].append(value)
-    
-#opname in data-frame           
-config_df['exPar error'] = pd.DataFrame(ex_par_errors)
-config_df['exPar missing'] = pd.DataFrame(ex_par_missing)
-config_df['intLoc missing'] = pd.DataFrame({'internalLocation':int_loc_missing})
 
-#opname in samenvatting
-summary['ExPar errors'] = len(config_df['exPar error'])
+config_df['exPar missing'] = pd.DataFrame(ex_par_missing)
 summary['ExPar missing'] = len(config_df['exPar missing'])
-summary['IntLoc missing'] = len(config_df['intLoc missing'])
 
 #loggen van resultaat
-for item in ['ExPar errors', 'ExPar missing']:
-    if summary[item] == 0:
-        logging.info('geen {}'.format(item))
-    else:
-      logging.warning('{} locaties met {}'.format(summary[item],item))
-      
-if summary['IntLoc missing'] == 0:
-    logging.info('alle interne locaties uit idmap opgenomen in locationSets')
+if summary['ExPar missing'] == 0:
+    logging.info('geen ExPar missing')
 else:
-    logging.warning('{} interne locaties niet opgenomen in locationSets'.format(summary['IntLoc missing']))                    
+  logging.warning('{} locaties met ExPar missing'.format(summary['ExPar missing']))
 
 #%% zoeken naar ex-loc errors
 logging.info('controle externe locaties')
