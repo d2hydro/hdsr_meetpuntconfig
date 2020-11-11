@@ -744,13 +744,14 @@ for loc_group, group_df in idmap_subloc_df.groupby('loc_groep'):
             if (not any([re.match('HR.',ex_par) for ex_par in ex_pars])): # geen stuurpeil
                 if any([re.match('HR.',ex_par) for ex_par in np.unique(group_df['externalParameter'])]):
                     #~krooshek/debietmeter zonder stuurpeil = fout
-                    sp_locs = np.unique(group_df[group_df['externalParameter'].str.match('HR.')]['internalLocation'])
-                    ts_errors['internalLocation'].append(int_loc)
-                    ts_errors['internalParameters'].append(",".join(int_pars))
-                    ts_errors['externalParameters'].append(",".join(ex_pars))
-                    ts_errors['externalLocations'].append(','.join(ex_locs))
-                    ts_errors['type'].append(sub_type)
-                    ts_errors['fout'].append(f'{sub_type} zonder stuurpeil ({",".join(sp_locs)} wel)')
+                    if not sub_type in ['totaal', 'vispassage']:
+                        sp_locs = np.unique(group_df[group_df['externalParameter'].str.match('HR.')]['internalLocation'])
+                        ts_errors['internalLocation'].append(int_loc)
+                        ts_errors['internalParameters'].append(",".join(int_pars))
+                        ts_errors['externalParameters'].append(",".join(ex_pars))
+                        ts_errors['externalLocations'].append(','.join(ex_locs))
+                        ts_errors['type'].append(sub_type)
+                        ts_errors['fout'].append(f'{sub_type} zonder stuurpeil ({",".join(sp_locs)} wel)')
                     
             else: #krooshek/debietmeter met stuurpeil
                 # >1 sp zonder andere interne parameter = fout
@@ -790,7 +791,7 @@ summary['timeSeries errors'] = len(config_df['timeSeries error'])
 if summary['timeSeries errors'] == 0:
     logging.info('alle tijdseries zijn logisch gekoppeld aan interne locaties/parameters')
 else:
-    logging.warning('{} tijdseries missend/onlogisch gekoppeld'.format(summary['exLoc error']))   
+    logging.warning('{} tijdseries missend/onlogisch gekoppeld'.format(summary['timeSeries errors']))   
 
 #%% controle validationrulesets
 '''ToDo:
