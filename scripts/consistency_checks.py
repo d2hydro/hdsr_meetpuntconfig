@@ -806,7 +806,7 @@ logging.info('controle validationRules')
 valid_errors = {'internalLocation':[],
                 'start':[],
                 'eind':[],
-                'internalParameters':[],
+                'internalParameter':[],
                 'fout_type':[],
                 'fout_beschrijving':[]
                 }
@@ -899,7 +899,7 @@ for set_name in ini_config['validationRules'].keys():
                 valid_errors['internalLocation'] += [row['LOC_ID']] * len(errors['fout_beschrijving'])
                 valid_errors['start'] += [row['START']] * len(errors['fout_beschrijving'])
                 valid_errors['eind'] += [row['EIND']] * len(errors['fout_beschrijving'])
-                valid_errors['internalParameters'] += [','.join(int_pars)] * len(errors['fout_beschrijving'])
+                valid_errors['internalParameter'] += [param] * len(errors['fout_beschrijving'])
                 valid_errors['fout_type'] += [errors['fout_type']] * len(errors['fout_beschrijving'])
                 valid_errors['fout_beschrijving'] += errors['fout_beschrijving']
     
@@ -1152,6 +1152,7 @@ for sheet_name, df in config_df.items():
             for col in worksheet.columns:
                 worksheet.column_dimensions[col[0].column_letter].width = 20
             worksheet.auto_filter.ref = worksheet.dimensions
+            worksheet.freeze_panes = worksheet['B2']
             if not df.empty:
                 if (sheet_name in warning_sheets):
                     worksheet.sheet_properties.tabColor = 'FF0000'
