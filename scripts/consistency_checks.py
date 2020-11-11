@@ -671,6 +671,10 @@ else:
     logging.warning('{} tijdseries missend/onlogisch gekoppeld'.format(summary['exLoc error']))   
 
 #%% controle validationrulesets
+'''ToDo:
+    - df_idmap moet IDoppervlaktewater + Hymos bevatten
+    
+'''
 logging.info('controle validationRules')
 
 valid_errors = {'internalLocation':[],
@@ -832,6 +836,13 @@ sets = {'waterstandloc':'WATERSTANDLOCATIES',
     
     
 #%%
+'''
+ToDo:
+    missing_in_set: 
+        - kijken in welke set een locatie hoort te zitten en of dat klopt met de sectie?
+        - kijken of de locatie mist in de locatieset. Even een locatie uit de csv halen om te testen.
+'''
+    
 for set_name,section_name in sets.items():
     logging.info(set_name)
     location_set = location_sets[set_name]
@@ -914,7 +925,7 @@ for set_name,section_name in sets.items():
             loc_set_errors['location_name'].append(loc_name)
             for key, value in error.items():
                 loc_set_errors[key].append(value)
-            
+        
         # miss_locs = [loc for loc in int_locs if not loc in location_set['gdf']['LOC_ID'].values]
         # #for loc_id in miss_locs:
         # loc_set_errors['locationId'].append(miss_locs)
