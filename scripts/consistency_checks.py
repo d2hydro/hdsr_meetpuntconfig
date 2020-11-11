@@ -804,9 +804,13 @@ else:
 logging.info('controle validationRules')
 
 valid_errors = {'internalLocation':[],
-             'internalParameters':[],
-             'fout':[]
-             }
+                'start':[],
+                'eind':[],
+                'internalParameters':[],
+                'fout_type':[],
+                'fout_beschrijving':[]
+                }
+
 
 location_sets_dict = xml_to_dict(config.RegionConfigFiles['LocationSets'])['locationSets']['locationSet']
 for set_name in ini_config['validationRules'].keys():
@@ -855,43 +859,52 @@ for set_name in ini_config['validationRules'].keys():
     for (idx, row) in location_set_gdf.iterrows():
         int_loc = row['LOC_ID']
         row = row.dropna()
-        errors = []
         for param, validationrule in validation_rules.items():
+            errors = {'fout_type':None,
+                      'fout_beschrijving':[]}
             attribs = [attrib for attrib in flatten(validationrule.values()) if attrib in row]
             attribs_missing = [attrib for attrib in flatten(validationrule.values()) if not attrib in row]
             if int_loc in params_df.index:
-                int_pars = params_df.loc[int_loc]['internalParameters']
+                int_pars = np.unique(params_df.loc[int_loc]['internalParameters'])
             else:
                 int_pars = []
             if any(re.match(param,int_par) for int_par in int_pars):
                 if len(attribs_missing) == 0:
                     if all(key in ['hmax', 'hmin'] for key in validationrule.keys()):
                         if row[validationrule['hmax']] < row[validationrule['hmin']]:
-                            errors += [f"{validationrule['hmax']} < {validationrule['hmin']}"]
+                            errors['fout_type'] = 'waarde'
+                            errors['fout_beschrijving'] += [f"{validationrule['hmax']} < {validationrule['hmin']}"]
                     if all(key in validationrule.keys() for key in ['hmax', 'smax', 'smin', 'hmin']):
                         #soft mins/max' kunnen lijsten zijn, dus maken we er lijsten van
                         soft_mins = [validationrule['smin']] if isinstance(validationrule['smin'], str) else validationrule['smin']
                         soft_maxs = [validationrule['smax']] if isinstance(validationrule['smax'], str) else validationrule['smax']
                         for soft_min, soft_max in zip(soft_mins, soft_maxs):
                             if row[soft_max] <= row[soft_min]:
-                                errors += [f"{row['LOC_ID']} {validationrule['smax']} <= {validationrule['smin']}"]
+                                errors['fout_type'] = 'waarde'
+                                errors['fout_beschrijving'] += [f"{soft_max} <= {soft_min}"]
                             if row[validationrule['hmax']] < row[soft_max]:
-                                errors += [f"{row['LOC_ID']} {validationrule['hmax']} < {validationrule['smax']}"]
+                                errors['fout_type'] = 'waarde'
+                                errors['fout_beschrijving'] += [f"{validationrule['hmax']} < {soft_max}"]
                             if row[soft_min] < row[validationrule['hmin']]:
-                                errors += [f"{row['LOC_ID']} {validationrule['smin']} < {validationrule['hmin']}"]
+                                errors['fout_type'] = 'waarde'
+                                errors['fout_beschrijving'] += [f"{soft_min} < {validationrule['hmin']}"]
                 else: #locatie wordt niet gevalideerd voor parameter
-                    errors += [f"{row['LOC_ID']} met parameter {param} mist attribuutwaarden {','.join(attribs_missing)}"]
+                    errors['fout_type'] = 'missend'
+                    errors['fout_beschrijving'] += [f"{','.join(attribs_missing)}"]
             elif len(attribs) > 0:
-                errors += [f"{row['LOC_ID']} met parameters {','.join(params_df.loc[int_loc]['internalParameters'])} heeft attribuutwaarden {','.join(attribs)}"]                 
+                errors['fout_type'] = 'overbodig'
+                errors['fout_beschrijving'] += [f"{','.join(attribs)}"]                 
     
-        if len(errors) > 0:
-            # if len(errors) > 1:
-            #     print(f"{[row['LOC_ID']] * len(errors)} {[','.join(int_pars)] * len(errors)} {errors}")
-            valid_errors['internalLocation'] += [row['LOC_ID']] * len(errors)
-            valid_errors['internalParameters'] += [','.join(int_pars)] * len(errors)
-            valid_errors['fout'] += errors
+            if errors['fout_type']:
+                valid_errors['internalLocation'] += [row['LOC_ID']] * len(errors['fout_beschrijving'])
+                valid_errors['start'] += [row['START']] * len(errors['fout_beschrijving'])
+                valid_errors['eind'] += [row['EIND']] * len(errors['fout_beschrijving'])
+                valid_errors['internalParameters'] += [','.join(int_pars)] * len(errors['fout_beschrijving'])
+                valid_errors['fout_type'] += [errors['fout_type']] * len(errors['fout_beschrijving'])
+                valid_errors['fout_beschrijving'] += errors['fout_beschrijving']
     
 config_df['validation error'] = pd.DataFrame(valid_errors)
+config_df['validation error'] = config_df['validation error'].drop_duplicates()
 
 #opname in samenvatting
 summary['validation error'] = len(config_df['validation error'])
