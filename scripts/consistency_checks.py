@@ -673,7 +673,10 @@ else:
 #%% controle validationrulesets
 '''ToDo:
     - df_idmap moet IDoppervlaktewater + Hymos bevatten
-    
+    - kolom fout_type en fout_opmerking toevoegen/splitsen
+    - internal parameters uniek maken
+    - fout melden als smin/smax lijsten niet unieke waarden bevatten
+    - comment regel in ini-file bij lijst-vergelijkingen. Herstructureren json zodat die fout niet gemaakt kan worden?
 '''
 logging.info('controle validationRules')
 
