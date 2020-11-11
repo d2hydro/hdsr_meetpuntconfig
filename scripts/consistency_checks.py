@@ -1088,6 +1088,7 @@ xls_writer.save()
 
 #%% updaten csv's
 def update_date(row,mpt_df,date_threshold):
+    ''' wegschrijven van de start- en end-date'''
     int_loc = row['LOC_ID']
     if int_loc in mpt_df.index:
         start_date = mpt_df.loc[int_loc]['STARTDATE'].strftime('%Y%m%d')
@@ -1102,11 +1103,25 @@ def update_date(row,mpt_df,date_threshold):
     return start_date, end_date
 
 def update_histtag(row,grouper):
-    
+    ''' functie waarmee de laatste histag op aan waterstandsloc wordt toegekend '''
     return next((df.sort_values('total_max_end_dt', ascending=False)['serie'].values[0]
                  for loc_id, df 
                  in grouper 
                  if loc_id == row['LOC_ID']),None)
+
+
+def update_peilschaal(row):
+    ''' toekennen van de bovenstroomse en benedenstroomse peilschalen aan sublocaties '''
+    result = {'HBOV':'','HBEN':''}
+    
+    for key in result.keys():
+        df = waterstandloc_gdf.loc[waterstandloc_gdf['LOC_ID'] == row[key]]
+        if not df.empty:
+            result[key] = df['PEILSCHAAL'].values[0]
+    
+    return result['HBOV'], result['HBEN']
+
+    
 
 #def update_types(row):
     
@@ -1132,9 +1147,12 @@ for locationSet, gdf in {'OPVLWATER_HOOFDLOC': hoofdloc_gdf,
         
     elif locationSet == 'OPVLWATER_SUBLOC':
         grouper = df.groupby(['PAR_ID'])
-        par_types_df = grouper['TYPE'].unique().apply(lambda x: sorted(x)).transform(lambda x: ','.join(x))
+        par_types_df = grouper['TYPE'].unique().apply(lambda x: sorted(x)).transform(lambda x: '/'.join(x))
         df['PAR_ID'] = gdf['LOC_ID'].str[0:-1] + '0'
         df['ALLE_TYPES'] = df['PAR_ID'].apply(lambda x: par_types_df.loc[x])
+        df[['HBOVPS','HBENPS']] = df.apply(update_peilschaal, 
+                                    axis=1,
+                                    result_type="expand")
 
     csv_file = csv_out.joinpath(config.locationSets[locationSet]['csvFile']['file'])
     if csv_file.suffix == '':
