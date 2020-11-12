@@ -1039,15 +1039,12 @@ for set_name,section_name in sets.items():
             sub_type = row['TYPE']
             
             if sub_type in ['afsluiter', 'debietmeter', 'krooshek', 'vispassage']:
-                if not re.match(f'[A-Z0-9 ]*_{caw_code}-K_[A-Z0-9 ]*-{sub_type}[0-9]',loc_name):
+                if not re.match(f'[A-Z0-9 ]*_{caw_code}-K_[A-Z0-9 ]*-{sub_type}',loc_name):
                     error['name_error'] = True
-                    error['type'] = sub_type
-                    error['functie'] = loc_functie
+
             else:
                 if not re.match(f'[A-Z0-9 ]*_{caw_code}-K_[A-Z0-9 ]*-{sub_type}[0-9]_{loc_functie}',loc_name):
                     error['name_error'] = True
-                    error['type'] = sub_type
-                    error['functie'] = loc_functie
             
             if not error['name_error']:
                 caw_name = re.match(f'([A-Z0-9 ]*)_',loc_name).group(1)
@@ -1075,6 +1072,10 @@ for set_name,section_name in sets.items():
             else:
                 if not par_gdf[par_gdf['LOC_ID'] == row['PAR_ID']]['geometry'].values[0].equals(row['geometry']):
                     error['xy_par_not_same'] = True
+                    
+            if any(error.values()):        
+                error['type'] = sub_type
+                error['functie'] = loc_functie
         
         elif set_name == 'hoofdloc':
             if not re.match(f'[A-Z0-9 ]*_{caw_code}-K_[A-Z0-9 ]*',loc_name):
