@@ -34,7 +34,8 @@ pd.options.mode.chained_assignment = None
 fixed_sheets = ['histTag_ignore',
                 'inhoudsopgave',
                 'exLoc_ignore',
-                'TS800_ignore']
+                'TS800_ignore',
+                'xy_ignore']
 
 warning_sheets = ['histTags_noMatch',
                   'histTags_ignore_match',
@@ -337,6 +338,13 @@ else:
     config_df['params_missing'] = config_df['params_missing'].set_index('parameters')
 
 #%% controle op consistentie sublocs t.b.v. wegschrijven hoofdloc_gdf
+logging.info('controle consistentie sublocs op per hoofdlocatie')
+
+if 'xy_ignore' in config_df.keys():
+    xy_ignore_df = config_df['xy_ignore']
+else:
+    xy_ignore_df = pd.DataFrame({'internalLocation':[],'x':[],'y':[]})
+    
 hoofdloc_gdf = config.get_locations('OPVLWATER_HOOFDLOC')
 subloc_gdf = config.get_locations('OPVLWATER_SUBLOC')
 
@@ -372,12 +380,17 @@ for loc_id, gdf in grouper:
     else:
         fields['LOC_NAME'] = loc_names[0]
     #controle subloc op 1 consistente locatie
-    geoms = gdf['geometry'].unique()
-    if not len(geoms) == 1:
-        errors['GEOMETRY'] = ",".join([f'({geom.x} {geom.y})' for geom in geoms])
+    if any([re.match(loc,loc_id) for loc in xy_ignore_df['internalLocation']]):
+        fields['X'], fields['Y'] = next([row['x'],row['y']] 
+                                        for index, row in xy_ignore_df.iterrows() 
+                                        if re.match(row['internalLocation'], loc_id))
     else:
-        fields['X'] = geoms[0].x
-        fields['Y'] = geoms[0].y
+        geoms = gdf['geometry'].unique()
+        if not len(geoms) == 1:
+            errors['GEOMETRY'] = ",".join([f'({geom.x} {geom.y})' for geom in geoms])
+        else:
+            fields['X'] = geoms[0].x
+            fields['Y'] = geoms[0].y
         
     #wegschrijven alle types op sublocaties
     all_types = list(gdf['TYPE'].unique())
@@ -401,7 +414,6 @@ for loc_id, gdf in grouper:
         for key,value in fields.items():
             par_dict[key].append(value)
             
-    
     # als fout, dan opname in error-dict
     if any(errors.values()):
         hloc_errors['LOC_ID'].append(loc_id)
