@@ -816,7 +816,7 @@ logging.info('controle validationRules')
 valid_errors = {'internalLocation':[],
                 'start':[],
                 'eind':[],
-                'internalParameter':[],
+                'internalParameters':[],
                 'fout_type':[],
                 'fout_beschrijving':[]
                 }
@@ -909,7 +909,7 @@ for set_name in ini_config['validationRules'].keys():
                 valid_errors['internalLocation'] += [row['LOC_ID']] * len(errors['fout_beschrijving'])
                 valid_errors['start'] += [row['START']] * len(errors['fout_beschrijving'])
                 valid_errors['eind'] += [row['EIND']] * len(errors['fout_beschrijving'])
-                valid_errors['internalParameter'] += [param] * len(errors['fout_beschrijving'])
+                valid_errors['internalParameters'] += [",".join(int_pars)] * len(errors['fout_beschrijving'])
                 valid_errors['fout_type'] += [errors['fout_type']] * len(errors['fout_beschrijving'])
                 valid_errors['fout_beschrijving'] += errors['fout_beschrijving']
     
