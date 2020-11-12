@@ -571,7 +571,6 @@ else:
 #%% expar missings
 logging.info('controle missende ex-parameters')
 ex_par_missing = {'internalLocation':[],
-                  'locationType':[],
                   'exPars':[],
                   'QR':[],
                   'QS':[],
@@ -604,7 +603,6 @@ for index, row in hoofdloc_gdf.iterrows():
     # rapporteren missings
     if any(missings.values()):
         ex_par_missing['internalLocation'].append(int_loc)
-        ex_par_missing['locationType'].append(loc_type)
         ex_par_missing['exPars'].append(','.join(ex_pars))
         for key, value in missings.items():
             ex_par_missing[key].append(value)
