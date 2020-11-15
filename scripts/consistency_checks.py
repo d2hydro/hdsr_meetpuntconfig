@@ -966,12 +966,14 @@ else:
 #%% validatie locationSets
 logging.info('validatie locatieSets')
 loc_set_errors = {'locationId':[],
+                  'caw_code':[],
+                  'caw_name':[],
                   'csv_file':[],
                   'location_name':[],
                   'type':[],
                   'functie': [],
                   'name_error':[],
-                  'caw_name_consistent':[],
+                  'caw_name_inconsistent':[],
                   'missing_in_map':[],
                   'missing_in_set':[],
                   'missing_peilschaal':[],
@@ -1015,7 +1017,7 @@ for set_name,section_name in sets.items():
     #idx, row = list(location_gdf.iterrows())[0]
     for idx, row in list(location_gdf.iterrows()):
         error = {'name_error':False,
-                 'caw_name_consistent':False,
+                 'caw_name_inconsistent':False,
                  'missing_in_map':False,
                  'type':'',
                  'functie':'',
@@ -1031,6 +1033,7 @@ for set_name,section_name in sets.items():
         loc_id = row['LOC_ID']
         caw_code = loc_id[2:-2]
         loc_name = row['LOC_NAME']
+        caw_name = ''
     
         
         if set_name == 'subloc':
@@ -1052,7 +1055,7 @@ for set_name,section_name in sets.items():
                         f'..{caw_code}')]['LOC_NAME'].str.match(
                             f'({caw_name}_{caw_code}-K)')
                             ):
-                                error['caw_name_consistent'] = True
+                                error['caw_name_inconsistent'] = True
                 
             if not row['HBOV'] in location_sets['waterstandloc']['gdf']['LOC_ID'].values:
                 error['missing_hbov'] = True
@@ -1091,7 +1094,7 @@ for set_name,section_name in sets.items():
                         f'..{caw_code}')]['LOC_NAME'].str.match(
                             f'({caw_name}_{caw_code}-w)')
                             ):
-                                error['caw_name_consistent'] = True
+                                error['caw_name_inconsistent'] = True
     
             if not row['PEILSCHAAL'] in location_sets['peilschalen']['gdf']['LOC_ID'].values:
                 error['missing_peilschaal'] = True
@@ -1101,6 +1104,8 @@ for set_name,section_name in sets.items():
         
         if any(error.values()):
             loc_set_errors['locationId'].append(loc_id)
+            loc_set_errors['caw_name'].append(caw_name)
+            loc_set_errors['caw_code'].append(caw_code)
             loc_set_errors['csv_file'].append(csv_file)
             loc_set_errors['location_name'].append(loc_name)
             for key, value in error.items():
