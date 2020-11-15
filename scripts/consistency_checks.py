@@ -26,6 +26,7 @@ import sys
 import shutil
 import re
 from collections.abc import Iterable
+from shapely.geometry import Point
 
 pd.options.mode.chained_assignment = None
 
@@ -430,13 +431,16 @@ summary['hloc error'] = len(config_df['hloc error'])
 
 if summary['hloc error'] == 0:
     logging.info('geen fouten in aanmaken hoofdlocaties')
-    hoofdloc_gdf = pd.DataFrame(par_dict)
-    columns = list(par_gdf.columns)
-    drop_cols = [col for col in par_gdf.columns if (col in hoofdloc_gdf.columns) & (not col =='LOC_ID')]
+    par_gdf = pd.DataFrame(par_dict)
+    columns = list(hoofdloc_gdf.columns)
+    drop_cols = [col for col in hoofdloc_gdf.columns if (col in par_gdf.columns) & (not col =='LOC_ID')]
     drop_cols = drop_cols + ['geometry']
-    par_gdf = par_gdf.drop(drop_cols, axis=1)
-    hoofdloc_gdf = hoofdloc_gdf.merge(par_gdf,on='LOC_ID')
-    hoofdloc_gdf = hoofdloc_gdf[[col for col in columns if not col == 'geometry']]
+    hoofdloc_gdf = hoofdloc_gdf.drop(drop_cols, axis=1)
+    hoofdloc_gdf = par_gdf.merge(hoofdloc_gdf,on='LOC_ID')
+    hoofdloc_gdf['geometry'] = hoofdloc_gdf.apply((lambda x: Point(float(x['X']),
+                                                                   float(x['Y']))),
+                                                                    axis=1)
+    hoofdloc_gdf = hoofdloc_gdf[columns]
     
     
 else:
