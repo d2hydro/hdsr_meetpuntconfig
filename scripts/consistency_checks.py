@@ -1148,6 +1148,8 @@ else:
     logging.warning('{} fouten in locationSets'.format(len(consistency_df['locSet error'])))        
 
 #%% wegschrijven naar excel
+inhoudsopgave = consistency_df['inhoudsopgave']
+inhoudsopgave.index = inhoudsopgave['werkblad']
 summary = {key:len(df) for key, df in consistency_df.items() if key in warning_sheets}
    
 #lees input xlsx en gooi alles weg behalve de fixed_sheets
@@ -1159,18 +1161,19 @@ for worksheet in book.worksheets:
 # voeg samenvatting toe
 worksheet = book.create_sheet('samenvatting',1)
 worksheet.sheet_properties.tabColor = '92D050'
-worksheet.append(['controle','aantal'])
+worksheet.append(['controle','aantal','beschrijving'])
 for cell in worksheet['{}'.format(worksheet.max_row)]:
     cell.font = Font(bold=True)
     
 for key, value in summary.items():
-    worksheet.append([key,value])
+    worksheet.append([key,value,inhoudsopgave.loc[key]['beschrijving']])
     if value > 0:
        worksheet[worksheet.max_row][1].fill = PatternFill(fgColor='FF0000', fill_type='solid')
     else:
         worksheet[worksheet.max_row][1].fill = PatternFill(fgColor='92D050', fill_type='solid')
 
 worksheet.column_dimensions['A'].width=40
+worksheet.column_dimensions['C'].width = 100
 worksheet.auto_filter.ref = worksheet.dimensions
 
 xls_writer = pd.ExcelWriter(consistency_out_xlsx, engine='openpyxl')
