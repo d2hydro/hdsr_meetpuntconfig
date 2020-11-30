@@ -16,3 +16,4 @@ data/csv/oppvlwater_hoofdloc.csv
 *.bak
 scripts/test.py
 config/config.json
+data/~$consistency.xlsx

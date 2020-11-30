@@ -138,7 +138,6 @@ def get_attribs(validation_rules,int_pars=None):
 #%% initialisatie
 workdir = Path(__file__).parent
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
-summary = dict()
 
 #inlezen paden vanuit inifile
 config_json = Path(r'..\config\config.json')
@@ -229,8 +228,6 @@ for section_type, sections in idmap_subsecs.items():
             df['bestand'] = idmap
             consistency_df['idmap v sectie'] = pd.concat([consistency_df['idmap v sectie'], df], axis=0)
 
-summary['idmaps in verkeerde sectie'] = len(consistency_df['idmap v sectie'])
-
 #%% inlezen hist tags & ignore lijst
 logging.info('zoeken naar missende histTags in idmaps')
 dtype_cols = ['total_min_start_dt', 'total_max_end_dt']
@@ -260,7 +257,6 @@ hist_tags_no_match_df = hist_tags_no_match_df.drop('fews_locid',axis=1)
 hist_tags_no_match_df.columns = ['UNKNOWN_SERIE','STARTDATE','ENDDATE']
 hist_tags_no_match_df = hist_tags_no_match_df.set_index('UNKNOWN_SERIE')
 consistency_df['histTags_noMatch'] = hist_tags_no_match_df
-summary['histTags_noMatch'] = len(hist_tags_no_match_df)
 
 if not consistency_df['histTags_noMatch'].empty:
     logging.warning('{} histTags zijn niet opgenomen in idmap'.format(len(consistency_df['histTags_noMatch'])))
@@ -329,16 +325,12 @@ for idmap_file in idmap_files:
     else:
         logging.info('geen dubbele idmaps in {}'.format(idmap_file))
 
-    summary['dubbele idmaps {}'.format(idmap_file)] = len(idmap_doubles)
-
 #%% consistentie parameters: zijn alle interne parameters opgenomen in parameters.xml
 logging.info('zoeken op missende interne parameters')
 config_parameters = list(fews_config.get_parameters(dict_keys='parameters').keys())
 id_map_parameters = [id_map['internalParameter'] for id_map in idmap_total]
 params_missing = [parameter for parameter in id_map_parameters 
                   if not parameter in config_parameters]
-
-summary['missende parameters'] = len(params_missing)
 
 if len(params_missing) == 0:
     logging.info('alle parameters in idMaps zijn opgenomen in config')
@@ -436,9 +428,7 @@ for loc_id, gdf in grouper:
 consistency_df['hloc error'] = pd.DataFrame(hloc_errors)
 #opname in samenvatting
 
-summary['hloc error'] = len(consistency_df['hloc error'])
-
-if summary['hloc error'] == 0:
+if consistency_df['hloc error'].empty:
     logging.info('geen fouten in aanmaken hoofdlocaties')
     par_gdf = pd.DataFrame(par_dict)
     columns = list(hoofdloc_gdf.columns)
@@ -453,7 +443,7 @@ if summary['hloc error'] == 0:
     
     
 else:
-    logging.warning('{} fouten bij aanmaken hoofdlocaties'.format(summary['hloc error']))
+    logging.warning('{} fouten bij aanmaken hoofdlocaties'.format(len(consistency_df['hloc error'])))
     logging.warning('hoofdlocaties worden alleen opnieuw geschreven vanuit sublocaties wanneer de fouten zijn opgelost')  
 
 
@@ -567,19 +557,17 @@ consistency_df['exPar error'] = pd.DataFrame(ex_par_errors)
 consistency_df['intLoc missing'] = pd.DataFrame({'internalLocation':int_loc_missing})
 
 #opname in samenvatting
-summary['ExPar errors'] = len(consistency_df['exPar error'])
-summary['IntLoc missing'] = len(consistency_df['intLoc missing'])
 
 #loggen van resultaat
-if summary['ExPar errors'] == 0:
+if len(consistency_df['exPar error']) == 0:
     logging.info('geen ExPar errors')
 else:
-  logging.warning('{} locaties met ExPar errors'.format(summary['ExPar errors']))
+  logging.warning('{} locaties met ExPar errors'.format(len(consistency_df['exPar error'])))
       
-if summary['IntLoc missing'] == 0:
+if len(consistency_df['intLoc missing']) == 0:
     logging.info('alle interne locaties uit idmap opgenomen in locationSets')
 else:
-    logging.warning('{} interne locaties niet opgenomen in locationSets'.format(summary['IntLoc missing']))                    
+    logging.warning('{} interne locaties niet opgenomen in locationSets'.format(len(consistency_df['intLoc missing'])))                    
 
 #%% expar missings
 logging.info('controle missende ex-parameters')
@@ -621,13 +609,12 @@ for index, row in hoofdloc_gdf.iterrows():
             ex_par_missing[key].append(value)
 
 consistency_df['exPar missing'] = pd.DataFrame(ex_par_missing)
-summary['ExPar missing'] = len(consistency_df['exPar missing'])
 
 #loggen van resultaat
-if summary['ExPar missing'] == 0:
+if len(consistency_df['exPar missing']) == 0:
     logging.info('geen ExPar missing')
 else:
-  logging.warning('{} locaties met ExPar missing'.format(summary['ExPar missing']))
+  logging.warning('{} locaties met ExPar missing'.format(len(consistency_df['exPar missing'])))
 
 #%% zoeken naar ex-loc errors
 logging.info('controle externe locaties')
@@ -689,12 +676,10 @@ for loc_group in idmap_df.groupby('externalLocation'):
 
 consistency_df['exLoc error'] = pd.DataFrame(ex_loc_errors)
 
-summary['exLoc error'] = len(consistency_df['exLoc error'])
-
-if summary['exLoc error'] == 0:
+if len(consistency_df['exLoc error']) == 0:
     logging.info('alle externe locaties consistent met interne locaties')
 else:
-    logging.warning('{} externe locaties onlogisch bij interne locaties'.format(summary['exLoc error']))                    
+    logging.warning('{} externe locaties onlogisch bij interne locaties'.format(len(consistency_df['exLoc error'])))                    
 
 #%% zoeken naar sub-locaties anders dan krooshek en debietmeter:
 #   - zonder stuurpeil tijdserie
@@ -809,12 +794,10 @@ for loc_group, group_df in idmap_subloc_df.groupby('loc_groep'):
 consistency_df['timeSeries error'] = pd.DataFrame(ts_errors)
 
 #opname in samenvatting
-summary['timeSeries errors'] = len(consistency_df['timeSeries error'])
-
-if summary['timeSeries errors'] == 0:
+if len(consistency_df['timeSeries error']) == 0:
     logging.info('alle tijdseries zijn logisch gekoppeld aan interne locaties/parameters')
 else:
-    logging.warning('{} tijdseries missend/onlogisch gekoppeld'.format(summary['timeSeries errors']))   
+    logging.warning('{} tijdseries missend/onlogisch gekoppeld'.format(len(consistency_df['timeSeries error'])))   
 
 #%% controle validationrulesets
 '''ToDo:
@@ -958,12 +941,10 @@ consistency_df['validation error'] = pd.DataFrame(valid_errors)
 consistency_df['validation error'] = consistency_df['validation error'].drop_duplicates()
 
 #opname in samenvatting
-summary['validation error'] = len(consistency_df['validation error'])
-
-if summary['validation error'] == 0:
+if len(consistency_df['validation error']) == 0:
     logging.info('er zijn geen foute/missende validatieregels')
 else:
-    logging.warning('{} validatieregels zijn fout/missend'.format(summary['validation error']))
+    logging.warning('{} validatieregels zijn fout/missend'.format(len(consistency_df['validation error'])))
 
 #%% controle op expar
 logging.info('regex externalParameters')
@@ -996,12 +977,10 @@ for idx, row in idmap_df.iterrows():
 consistency_df['par mismatch'] = pd.DataFrame(par_errors)
 #opname in samenvatting
 
-summary['par mismatch'] = len(consistency_df['par mismatch'])
-
-if summary['par mismatch'] == 0:
+if len(consistency_df['par mismatch']) == 0:
     logging.info('geen regex fouten op interne en externe parameters')
 else:
-    logging.warning('{} regex fouten op interne en externe parameters'.format(summary['par mismatch']))    
+    logging.warning('{} regex fouten op interne en externe parameters'.format(len(consistency_df['par mismatch'])))    
 
 #%% validatie locationSets
 logging.info('validatie locatieSets')
@@ -1022,7 +1001,7 @@ loc_set_errors = {'locationId':[],
                   'missing_hbovps':[],
                   'missing_hbenps':[],
                   'missing_hloc':[],
-                  'xy_par_not_same':[]}
+                  'xy_not_same':[]}
 
 sets = {'waterstandlocaties':'WATERSTANDLOCATIES',
         'sublocaties': 'KUNSTWERKEN'}
@@ -1067,7 +1046,7 @@ for set_name,section_name in sets.items():
                  'missing_hbovps':False,
                  'missing_hbenps':False,
                  'missing_hloc':False,
-                 'xy_par_not_same':False}
+                 'xy_not_same':False}
         
         loc_id = row['LOC_ID']
         caw_code = loc_id[2:-2]
@@ -1112,8 +1091,9 @@ for set_name,section_name in sets.items():
                 error['missing_hloc'] = True
             
             else:
-                if not par_gdf[par_gdf['LOC_ID'] == row['PAR_ID']]['geometry'].values[0].equals(row['geometry']):
-                    error['xy_par_not_same'] = True
+                if not any([re.match(loc,loc_id) for loc in xy_ignore_df['internalLocation']]):
+                    if not par_gdf[par_gdf['LOC_ID'] == row['PAR_ID']]['geometry'].values[0].equals(row['geometry']):
+                        error['xy_not_same'] = True
                     
             if any(error.values()):        
                 error['type'] = sub_type
@@ -1162,15 +1142,14 @@ for set_name,section_name in sets.items():
 consistency_df['locSet error'] = pd.DataFrame(loc_set_errors)
 #opname in samenvatting
 
-summary['locSet error'] = len(consistency_df['locSet error'])
-
-if summary['locSet error'] == 0:
+if len(consistency_df['locSet error']) == 0:
     logging.info('geen fouten in locationSets')
 else:
-    logging.warning('{} fouten in locationSets'.format(summary['locSet error']))        
+    logging.warning('{} fouten in locationSets'.format(len(consistency_df['locSet error'])))        
 
 #%% wegschrijven naar excel
-    
+summary = {key:len(df) for key, df in consistency_df.items() if key in warning_sheets}
+   
 #lees input xlsx en gooi alles weg behalve de fixed_sheets
 book = load_workbook(consistency_out_xlsx)
 for worksheet in book.worksheets:
