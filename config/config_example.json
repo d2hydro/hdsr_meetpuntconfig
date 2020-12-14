@@ -226,6 +226,7 @@
 			},
 			{
 				"parameter": "Q.B.",
+				"type": "debietmeter",
 				"extreme_values": {
 					"hmax": "Q_HMAX",
 					"smax": "Q_SMAX",
@@ -235,6 +236,7 @@
 			},
 			{
 				"parameter": "Q.G.",
+				"type": "debietmeter",
 				"extreme_values": {
 					"hmax": "Q_HMAX",
 					"smax": "Q_SMAX",
