@@ -22,26 +22,43 @@ Het aanmaken van de omgeving doe je met de volgende stappen:
 1. ga naar de locatie het bestandje environment.yml. Wanneer je van map moet veranderen gebruik je het commando 'cd' (zie https://www.lifewire.com/list-of-command-prompt-commands-4092302)
 1. geef de volgende opdracht 
 
-*conda env create -f environment.yml*
+```
+conda env create -f environment.yml
+```
 
 1. in de command prompt kun je de caw-omgeving nu openen met:
 
-*conda activate caw*
+```
+conda activate caw
+```
 
 In het geval je deze omgeving weer wilt verwijderen van je machine kan dit via de command prompt:
 
-*conda env remove -n caw*
+```
+conda env remove -n caw
+```
 
 In het geval je deze omgeving wilt updaten met een nieuwe yml-file:
 
-*conda env update -f environment.yml*
+```
+conda env update -f environment.yml
+```
+
+## Instalatie meetpuntconfig
+In de geactiveerde caw-omgeving kun je nu het meetpuntconfig pakket installeren vanuit de folder waarin je setup.py vindt:
+
+```
+pip install -e .
+```
 
 ## Voorbereiden configuratie
-Het bestand *config\config_example.ini* staat een voorbeeld bestand met variabelen die worden ingelezen door de scripts. Pas dit bestand aan met de volgende stappen:
-1. hernoem/kopieer *config\config_example.ini* naar *config\config.ini*
+Het bestand *config\config_example.json* staat een voorbeeld bestand met variabelen die worden ingelezen door de scripts. Pas dit bestand aan met de volgende stappen:
+1. hernoem/kopieer *config\config_example.json* naar *config\config.ini*
 1. zet alle paden in de sectie *[paden]* goed
 
 ## Uitvoeren consistentie-checks
-Draai het script in de map scripts vanuit de command prompt:
+Draai het script in de map scripts vanuit de command prompt in het mapje scripts:
 
-*python consistency_checks.py*
+```
+python run_consistency_checks.py
+```

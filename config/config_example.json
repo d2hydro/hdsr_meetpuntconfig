@@ -6,6 +6,13 @@
 		"fews_config": "d:\\FEWS\\HDSR_WIS\\CAW\\config",
 		"csv_out": "..\\data\\csv"
 	},
+	"fixed_sheets": [
+		"histTag_ignore",
+        "inhoudsopgave",
+        "exLoc_ignore",
+        "TS800_ignore",
+        "xy_ignore"
+	],
 	"location_sets": {
 		"hoofdlocaties": "OPVLWATER_HOOFDLOC",
 		"sublocaties": "OPVLWATER_SUBLOC",
@@ -13,7 +20,56 @@
 		"mswlocaties": "MSW_STATIONS",
 		"peilschalen": "OPVLWATER_PEILSCHALEN"
 	},
-	"external_parameters_alowed": {
+	"idmap_files": [
+		"IdOPVLWATER",
+		"IdOPVLWATER_HYMOS",
+		"IdHDSR_NSC",
+		"IdOPVLWATER_WQ",
+		"IdGrondwaterCAW"
+	],
+	"idmap_sections": {
+		"IdOPVLWATER": {
+			"KUNSTWERKEN": [
+				{
+					"section_start": "<!--KUNSTWERK SUBLOCS (old CAW id)-->",
+					"section_end": "<!--WATERSTANDSLOCATIES (old CAW id)-->"
+				},
+				{
+					"section_start": "<!--KUNSTWERK SUBLOCS (new CAW id)-->",
+					"section_end": "<!--WATERSTANDSLOCATIES (new CAW id)-->"
+				}
+			],
+			"WATERSTANDLOCATIES": [
+				{
+					"section_start": "<!--WATERSTANDSLOCATIES (old CAW id)-->",
+					"section_end": "<!--MSW (old CAW id)-->"
+				},
+				{
+					"section_start": "<!--WATERSTANDSLOCATIES (new CAW id)-->",
+					"section_end": "<!--MSW (new CAW id)-->"
+				}
+			],
+			"MSWLOCATIES": [
+				{
+					"section_start": "<!--MSW (new CAW id)-->"
+				}
+			]
+		},
+		"IdOPVLWATER_HYMOS": {
+			"KUNSTWERKEN": [
+				{
+					"section_end": "<!--WATERSTANDSLOCATIES-->"
+				}
+			],
+			"WATERSTANDLOCATIES": [
+				{
+					"section_start": "<!--WATERSTANDSLOCATIES-->",
+					"section_end": "<!--OVERIG-->"
+				}
+			]
+		}
+	},
+	"external_parameters_allowed": {
 		"pompvijzel": [
 			"FQ.$",
 			"I.B$",

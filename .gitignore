@@ -17,3 +17,9 @@ data/csv/oppvlwater_hoofdloc.csv
 scripts/test.py
 config/config.json
 data/~$consistency.xlsx
+*.txt
+meetpuntconfig.egg-info/*
+data/consistency_dec_versie.xlsx
+data/consistency_jan_versie.xlsx
+data/consistency_uit_dec_versie.xlsx
+meetpuntconfig/fews_utilities_black.py
