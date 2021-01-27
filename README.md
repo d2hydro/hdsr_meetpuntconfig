@@ -53,7 +53,7 @@ pip install -e .
 
 ## Voorbereiden configuratie
 Het bestand *config\config_example.json* staat een voorbeeld bestand met variabelen die worden ingelezen door de scripts. Pas dit bestand aan met de volgende stappen:
-1. hernoem/kopieer *config\config_example.json* naar *config\config.ini*
+1. hernoem/kopieer *config\config_example.json* naar *config\config.json*
 1. zet alle paden in de sectie *[paden]* goed
 
 ## Uitvoeren consistentie-checks
