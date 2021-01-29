@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
+from meetpuntconfig import __version__
 from setuptools import setup
+
 import pkg_resources  # part of setuptools
 
 
-from meetpuntconfig import __version__
-
-#%%
 with open("README.md", encoding="utf8") as f:
     long_description = f.read()
 
@@ -28,7 +27,7 @@ setup(
         "openpyxl",
         "pandas>=1.1.0",
         "spyder",
-        "xlrd>=1.0.0"
+        "xlrd>=1.0.0",
     ],
     keywords="HDSR meetpuntconfig FEWS",
 )

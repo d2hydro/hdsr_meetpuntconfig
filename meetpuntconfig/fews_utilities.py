@@ -9,12 +9,14 @@ __license__ = "MIT License"
 
 
 from collections import defaultdict
-import os
 
 # import xml.etree.ElementTree as ET
 from lxml import etree as ET
-import geopandas as gpd
 from shapely.geometry import Point
+
+import geopandas as gpd
+import os
+
 
 geo_datum = {"Rijks Driehoekstelsel": "epsg:28992"}
 
@@ -67,11 +69,7 @@ def etree_to_dict(t, section_start=None, section_end=None):
                 for k, v in dc.items():
                     dd[k].append(v)
 
-            d = {
-                t.tag.rpartition("}")[-1]: {
-                    k: v[0] if len(v) == 1 else v for k, v in dd.items()
-                }
-            }
+            d = {t.tag.rpartition("}")[-1]: {k: v[0] if len(v) == 1 else v for k, v in dd.items()}}
         if t.attrib:
             d[t.tag.rpartition("}")[-1]].update((k, v) for k, v in t.attrib.items())
         if t.text:
@@ -99,30 +97,19 @@ class FewsConfig:
         """build-in for loading all xml-files"""
         for (dirpath, dirnames, filenames) in os.walk(self.path):
             if not dirpath == self.path:
-                prop = next(
-                    (key for key in self.__dict__.keys() if key in dirpath), None
-                )
+                prop = next((key for key in self.__dict__.keys() if key in dirpath), None)
                 if not prop == None:
                     self.__dict__[prop].update(
-                        {
-                            os.path.splitext(file_name)[0]: os.path.join(
-                                dirpath, file_name
-                            )
-                            for file_name in filenames
-                        }
+                        {os.path.splitext(file_name)[0]: os.path.join(dirpath, file_name) for file_name in filenames}
                     )
 
     def _get_location_sets(self):
         """build-in method to extract a dict of locationsets"""
 
-        location_sets = xml_to_dict(self.RegionConfigFiles["LocationSets"])[
-            "locationSets"
-        ]["locationSet"]
+        location_sets = xml_to_dict(self.RegionConfigFiles["LocationSets"])["locationSets"]["locationSet"]
 
         self.locationSets = {
-            location_set["id"]: {
-                key: value for key, value in location_set.items() if not key == "id"
-            }
+            location_set["id"]: {key: value for key, value in location_set.items() if not key == "id"}
             for location_set in location_sets
         }
 
@@ -161,9 +148,7 @@ class FewsConfig:
 
         if dict_keys == "groups":
             return {
-                group["id"]: {
-                    key: value for key, value in group.items() if not key == "id"
-                }
+                group["id"]: {key: value for key, value in group.items() if not key == "id"}
                 for group in parameters["parameterGroups"]["parameterGroup"]
             }
 
@@ -174,21 +159,11 @@ class FewsConfig:
                     group["parameter"] = [group["parameter"]]
                 for parameter in group["parameter"]:
                     result.update({parameter["id"]: {}})
-                    result[parameter["id"]] = {
-                        key: value
-                        for key, value in parameter.items()
-                        if not key == "id"
-                    }
+                    result[parameter["id"]] = {key: value for key, value in parameter.items() if not key == "id"}
                     result[parameter["id"]].update(
-                        {
-                            key: value
-                            for key, value in group.items()
-                            if not key == "parameter"
-                        }
+                        {key: value for key, value in group.items() if not key == "parameter"}
                     )
-                    result[parameter["id"]]["groupId"] = result[parameter["id"]].pop(
-                        "id"
-                    )
+                    result[parameter["id"]]["groupId"] = result[parameter["id"]].pop("id")
             return result
 
     def get_locations(self, location_set):
@@ -221,20 +196,10 @@ class FewsConfig:
 
                 if z_attrib:
                     gdf["geometry"] = gdf.apply(
-                        (
-                            lambda x: Point(
-                                float(x[x_attrib]),
-                                float(x[y_attrib]),
-                                float(x[z_attrib]),
-                            )
-                        ),
-                        axis=1,
+                        (lambda x: Point(float(x[x_attrib]), float(x[y_attrib]), float(x[z_attrib]),)), axis=1,
                     )
                 else:
-                    gdf["geometry"] = gdf.apply(
-                        (lambda x: Point(float(x[x_attrib]), float(x[y_attrib]))),
-                        axis=1,
-                    )
+                    gdf["geometry"] = gdf.apply((lambda x: Point(float(x[x_attrib]), float(x[y_attrib]))), axis=1,)
                 crs = None
                 if location_set["csvFile"]["geoDatum"] in geo_datum.keys():
                     crs = geo_datum[location_set["csvFile"]["geoDatum"]]

@@ -2,6 +2,7 @@
 
 from meetpuntconfig.config import MeetpuntConfig
 
+
 # initieer meetpunt_config
 config_json = r"..\config\config.json"
 meetpunt_config = MeetpuntConfig(config_json)
