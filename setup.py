@@ -1,8 +1,5 @@
-# -*- coding: utf-8 -*-
 from meetpuntconfig import __version__
 from setuptools import setup
-
-import pkg_resources  # part of setuptools
 
 
 with open("README.md", encoding="utf8") as f:

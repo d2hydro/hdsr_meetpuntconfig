@@ -11,72 +11,69 @@ geo_datum = {"Rijks Driehoekstelsel": "epsg:28992"}
 
 def xml_to_etree(xml_file):
     """ parses an xml-file to an etree. ETree can be used in function etree_to_dict """
-
     t = ET.parse(xml_file).getroot()
-
     return t
 
 
 def etree_to_dict(t, section_start=None, section_end=None):
     """ converts an etree to a dictionary """
+    if isinstance(t, ET._Comment):
+        return
+    d = {t.tag.rpartition("}")[-1]: {} if t.attrib else None}
+    children = list(t)
 
-    if not isinstance(t, ET._Comment):
+    # get a section only
+    # ik zou zeggen 'if section_start or section_end'
+    # maar ik durf het niet te veranderen.
+    # wat denk jij?
+    if (not section_start == None) | (not section_end == None):  # noqa
+        if section_start:
+            start = [
+                idx
+                for idx, child in enumerate(children)
+                if isinstance(child, ET._Comment)
+                if ET.tostring(child).decode("utf-8").strip() == section_start
+            ][0]
+        else:
+            start = 0
+        if section_end:
+            end = [
+                idx
+                for idx, child in enumerate(children)
+                if isinstance(child, ET._Comment)
+                if ET.tostring(child).decode("utf-8").strip() == section_end
+            ][0]
+            if start < end:
+                children = children[start:end]
+        else:
+            children = children[start:]
 
-        d = {t.tag.rpartition("}")[-1]: {} if t.attrib else None}
-        children = list(t)
+    children = [child for child in children if not isinstance(child, ET._Comment)]
 
-        # get a section only
-        if (not section_start == None) | (not section_end == None):
-            if section_start:
-                start = [
-                    idx
-                    for idx, child in enumerate(children)
-                    if isinstance(child, ET._Comment)
-                    if ET.tostring(child).decode("utf-8").strip() == section_start
-                ][0]
-            else:
-                start = 0
-            if section_end:
-                end = [
-                    idx
-                    for idx, child in enumerate(children)
-                    if isinstance(child, ET._Comment)
-                    if ET.tostring(child).decode("utf-8").strip() == section_end
-                ][0]
-                if start < end:
-                    children = children[start:end]
-            else:
-                children = children[start:]
+    if children:
+        dd = defaultdict(list)
+        # for dc in map(etree_to_dict, children):
+        for dc in [etree_to_dict(child) for child in children]:
+            for k, v in dc.items():
+                dd[k].append(v)
 
-        children = [child for child in children if not isinstance(child, ET._Comment)]
-
-        if children:
-            dd = defaultdict(list)
-            # for dc in map(etree_to_dict, children):
-            for dc in [etree_to_dict(child) for child in children]:
-                for k, v in dc.items():
-                    dd[k].append(v)
-
-            d = {t.tag.rpartition("}")[-1]: {k: v[0] if len(v) == 1 else v for k, v in dd.items()}}
-        if t.attrib:
-            d[t.tag.rpartition("}")[-1]].update((k, v) for k, v in t.attrib.items())
-        if t.text:
-            text = t.text.strip()
-            if children or t.attrib:
-                if text:
-                    d[t.tag.rpartition("}")[-1]]["#text"] = text
-            else:
-                d[t.tag.rpartition("}")[-1]] = text
-
-        return d
+        d = {t.tag.rpartition("}")[-1]: {k: v[0] if len(v) == 1 else v for k, v in dd.items()}}
+    if t.attrib:
+        d[t.tag.rpartition("}")[-1]].update((k, v) for k, v in t.attrib.items())
+    if t.text:
+        text = t.text.strip()
+        if children or t.attrib:
+            if text:
+                d[t.tag.rpartition("}")[-1]]["#text"] = text
+        else:
+            d[t.tag.rpartition("}")[-1]] = text
+    return d
 
 
 def xml_to_dict(xml_file, section_start=None, section_end=None):
     """ converts an xml-file to a dictionary """
-
     t = xml_to_etree(xml_file)
     d = etree_to_dict(t, section_start=section_start, section_end=section_end)
-
     return d
 
 
@@ -84,20 +81,20 @@ class FewsConfig:
     def _populate_files(self):
         """build-in for loading all xml-files"""
         for (dirpath, dirnames, filenames) in os.walk(self.path):
-            if not dirpath == self.path:
-                prop = next((key for key in self.__dict__.keys() if key in dirpath), None)
-                if not prop == None:
-                    self.__dict__[prop].update(
-                        {os.path.splitext(file_name)[0]: os.path.join(dirpath, file_name) for file_name in filenames}
-                    )
+            if dirpath == self.path:
+                continue
+            prop = next((key for key in self.__dict__.keys() if key in dirpath), None)
+            if not prop:
+                continue
+            self.__dict__[prop].update(
+                {os.path.splitext(file_name)[0]: os.path.join(dirpath, file_name) for file_name in filenames}
+            )
 
     def _get_location_sets(self):
         """build-in method to extract a dict of locationsets"""
-
         location_sets = xml_to_dict(self.RegionConfigFiles["LocationSets"])["locationSets"]["locationSet"]
-
         self.locationSets = {
-            location_set["id"]: {key: value for key, value in location_set.items() if not key == "id"}
+            location_set["id"]: {key: value for key, value in location_set.items() if key != "id"}
             for location_set in location_sets
         }
 
@@ -128,15 +125,13 @@ class FewsConfig:
         self._get_location_sets()
 
     def get_parameters(self, dict_keys="groups"):
-        """method to extract a dictionary of parameter(groups) from a FEWS-config
-        ToDo:
-            - include parameters from CSV-files (support parametersCsvFile)
-        """
+        """method to extract a dictionary of parameter(groups) from a FEWS-config"""
+        # TODO: include parameters from CSV-files (support parametersCsvFile)
         parameters = xml_to_dict(self.RegionConfigFiles["Parameters"])["parameters"]
 
         if dict_keys == "groups":
             return {
-                group["id"]: {key: value for key, value in group.items() if not key == "id"}
+                group["id"]: {key: value for key, value in group.items() if key != "id"}
                 for group in parameters["parameterGroups"]["parameterGroup"]
             }
 
@@ -159,38 +154,37 @@ class FewsConfig:
 
         parameters:
             location_set: (string) id of location-set to extract the locations rom
-
-        ToDo:
-        - support other than csvFile type locationSets
-        - concatenate attribute-files
-        - rename to internal attribute names
-
         """
-        if location_set in self.locationSets.keys():
-            location_set = self.locationSets[location_set]
-            if "csvFile" in location_set.keys():
-                file = location_set["csvFile"]["file"]
-                if os.path.splitext(file)[1] == "":
-                    file = "{}.csv".format(file)
-                file = os.path.join(self.path, "MapLayerFiles", file)
-                x_attrib = location_set["csvFile"]["x"].replace("%", "")
-                y_attrib = location_set["csvFile"]["y"].replace("%", "")
-                if "z" in location_set["csvFile"].keys():
-                    z_attrib = location_set["csvFile"]["y"].replace("%", "")
-                else:
-                    z_attrib = None
+        # TODO: support other than csvFile type locationSets
+        # TODO: concatenate attribute-files
+        # TODO: rename to internal attribute names
+        if location_set not in self.locationSets.keys():
+            return
+        location_set = self.locationSets[location_set]
+        if "csvFile" not in location_set.keys():
+            return
+        file = location_set["csvFile"]["file"]
+        if os.path.splitext(file)[1] == "":
+            file = "{}.csv".format(file)
+        file = os.path.join(self.path, "MapLayerFiles", file)
+        x_attrib = location_set["csvFile"]["x"].replace("%", "")
+        y_attrib = location_set["csvFile"]["y"].replace("%", "")
+        if "z" in location_set["csvFile"].keys():
+            z_attrib = location_set["csvFile"]["y"].replace("%", "")
+        else:
+            z_attrib = None
 
-                gdf = gpd.read_file(file)
+        gdf = gpd.read_file(file)
 
-                if z_attrib:
-                    gdf["geometry"] = gdf.apply(
-                        (lambda x: Point(float(x[x_attrib]), float(x[y_attrib]), float(x[z_attrib]),)), axis=1,
-                    )
-                else:
-                    gdf["geometry"] = gdf.apply((lambda x: Point(float(x[x_attrib]), float(x[y_attrib]))), axis=1,)
-                crs = None
-                if location_set["csvFile"]["geoDatum"] in geo_datum.keys():
-                    crs = geo_datum[location_set["csvFile"]["geoDatum"]]
-                if not crs == None:
-                    gdf.crs = crs
-                return gdf
+        if z_attrib:
+            gdf["geometry"] = gdf.apply(
+                (lambda x: Point(float(x[x_attrib]), float(x[y_attrib]), float(x[z_attrib]),)), axis=1,
+            )
+        else:
+            gdf["geometry"] = gdf.apply((lambda x: Point(float(x[x_attrib]), float(x[y_attrib]))), axis=1,)
+        crs = None
+        if location_set["csvFile"]["geoDatum"] in geo_datum.keys():
+            crs = geo_datum[location_set["csvFile"]["geoDatum"]]
+        if crs:
+            gdf.crs = crs
+        return gdf

@@ -2,7 +2,6 @@ from meetpuntconfig.config import MeetpuntConfig
 
 import logging
 import sys
-from pathlib import Path
 
 
 if sys.version_info[0] < 3:

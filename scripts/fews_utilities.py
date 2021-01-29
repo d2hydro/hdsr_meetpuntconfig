@@ -156,15 +156,15 @@ class Config:
 
     def get_locations(self, location_set):
         """method to extract a data-frame of locations from a fews locationSet
-        
+
         parameters:
             location_set: (string) id of location-set to extract the locations rom
-            
+
         ToDo:
         - support other than csvFile type locationSets
         - concatenate attribute-files
         - rename to internal attribute names
-        
+
         """
         if location_set in self.locationSets.keys():
             location_set = self.locationSets[location_set]

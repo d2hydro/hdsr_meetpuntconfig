@@ -137,10 +137,7 @@ class MeetpuntConfig:
             hoofdlocaties="hoofdloc", sublocaties="subloc", waterstandlocaties="waterstandloc", mswlocaties="mswloc",
         )
         # initiate meetpunt_config
-        config_json_path = Path("../config/config.json")
-        if not config_json_path.is_file():
-            logger.warning(f"could not find {config_json_path.as_posix()}")
-            sys.exit()
+        config_json_path = Path("./config/config.json")
         self._read_config(config_json_path)
 
     def _read_config(self, config_json):
@@ -309,7 +306,7 @@ class MeetpuntConfig:
         """Check if all KW/OW locations are in the correct section."""
         logger.info(f"start {self.check_idmap_sections.__name__}")
         self.consistency[sheet_name] = pd.DataFrame(
-            columns=["bestand", "externalLocation", "externalParameter", "internalLocation", "internalParameter",]
+            columns=["bestand", "externalLocation", "externalParameter", "internalLocation", "internalParameter"]
         )
 
         for idmap, subsecs in self.idmap_sections.items():
@@ -377,8 +374,11 @@ class MeetpuntConfig:
 
     def check_ignored_hist_tags(self, sheet_name="histTags ignore match", idmap_files=["IdOPVLWATER"]):
         """Check if ignored histTags do match with idmap."""
+        # TODO: 'idmap_files=["IdOPVLWATER"]' is a anti-pattern!
+        #  we should avoid mutable objects (e.g. list) as arguments
+        #  more info: https://stackoverflow.com/questions/1132941/least-astonishment-and-the-mutable-default-argument
         logger.info(f"start {self.check_ignored_hist_tags.__name__}")
-        # TODO: anti-pattern (we should avoid mutable objects (e.g. list) as arguments)
+
         if self.hist_tags_ignore is None:
             self._read_hist_tags_ignore()
         if self.hist_tags is None:
@@ -402,7 +402,7 @@ class MeetpuntConfig:
         """Check if identical idmaps are doubled."""
         logger.info(f"start {self.check_double_idmaps.__name__}")
         self.consistency[sheet_name] = pd.DataFrame(
-            columns=["bestand", "externalLocation", "externalParameter", "internalLocation", "internalParameter",]
+            columns=["bestand", "externalLocation", "externalParameter", "internalLocation", "internalParameter"]
         )
         for idmap_file in self.idmap_files:
             idmaps = self._get_idmaps(idmap_files=[idmap_file])
@@ -412,7 +412,7 @@ class MeetpuntConfig:
                 idmap_doubles = list({idmap["externalLocation"]: idmap for idmap in idmap_doubles}.values())
                 df = pd.DataFrame(
                     idmap_doubles,
-                    columns=["internalLocation", "externalLocation", "internalParameter", "externalParameter",],
+                    columns=["internalLocation", "externalLocation", "internalParameter", "externalParameter"],
                 )
 
                 df["bestand"] = idmap_file
@@ -803,7 +803,9 @@ class MeetpuntConfig:
                 try:
                     end_time = pd.to_datetime(self.subloc[self.subloc["LOC_ID"] == int_loc]["EIND"].values[0])
                 except Exception as err:
-                    # renier
+                    # als self.subloc[self.subloc["LOC_ID"] == int_loc]["EIND"].values[0] ==
+                    # '21000101'
+                    # dan gaat goed
                     logger.warning(err)
                     sys.exit()
 
@@ -976,10 +978,7 @@ class MeetpuntConfig:
                     if (attrib not in attribs_required) and (attrib in row.keys())
                 ]
 
-                # TODO: var attribs is not used. On purpose?
-                attribs = [attrib for attrib in attribs_required if attrib not in attribs_missing]
-
-                for key, value in {"missend": attribs_missing, "overbodig": attribs_obsolete,}.items():
+                for key, value in {"missend": attribs_missing, "overbodig": attribs_obsolete}.items():
                     if len(value) > 0:
                         valid_errors["internalLocation"] += [int_loc]
                         valid_errors["start"] += [row["START"]]
@@ -1050,8 +1049,6 @@ class MeetpuntConfig:
         idmap_df = pd.DataFrame.from_dict(self._get_idmaps(["IdOPVLWATER"]))
         for idx, row in idmap_df.iterrows():
             error = None
-            # TODO: ext_par not used. On purpose?
-            ext_par = None
             ext_par = [
                 mapping["external"]
                 for mapping in self.parameter_mapping
