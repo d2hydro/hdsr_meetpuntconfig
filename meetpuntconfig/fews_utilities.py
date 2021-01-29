@@ -130,7 +130,7 @@ class FewsConfig:
     def get_parameters(self, dict_keys: str = "groups") -> Dict:
         """method to extract a dictionary of parameter(groups) from a FEWS-config"""
         # TODO: include parameters from CSV-files (support parametersCsvFile)
-        # TODO: is return type Dict of Optional[Dict]?
+        # TODO: is return type Dict or Optional[Dict] (in case dict_keys is not in ("groups", "parameters"))?
         parameters = xml_to_dict(self.RegionConfigFiles["Parameters"])["parameters"]
 
         if dict_keys == "groups":
