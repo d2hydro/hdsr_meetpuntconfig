@@ -16,15 +16,6 @@ setup(
     license="MIT",
     packages=["meetpuntconfig"],
     python_requires=">=3.6",
-    install_requires=[
-        "configparser",
-        "geopandas",
-        "lxml",
-        "numpy",
-        "openpyxl",
-        "pandas>=1.1.0",
-        "spyder",
-        "xlrd>=1.0.0",
-    ],
+    install_requires=["geopandas", "lxml", "numpy", "openpyxl", "pandas>=1.1.0", "xlrd>=1.0.0"],
     keywords="HDSR meetpuntconfig FEWS",
 )

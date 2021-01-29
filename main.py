@@ -8,7 +8,7 @@ if sys.version_info[0] < 3:
     raise AssertionError(f"current sys version={sys.version} is too old. Run app with >python3")
 
 
-def setup_logging():
+def setup_logging() -> None:
     """Adds a configured strearm handler to the root logger."""
     LOG_LEVEL = logging.INFO
     LOG_DATE_FORMAT = "%H:%M:%S"

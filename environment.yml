@@ -1,15 +1,14 @@
-name: caw
+name: mptconfig_checker
 
 channels:
   - conda-forge
   - defaults
 
 dependencies:
-  - configparser
   - geopandas
   - lxml
   - numpy
   - openpyxl
   - pandas >= 1.1.0
-  - spyder
   - xlrd >= 1.0.0
+  - typing

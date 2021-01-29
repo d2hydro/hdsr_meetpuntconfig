@@ -1,6 +1,8 @@
 from collections import defaultdict
 from lxml import etree as ET
 from shapely.geometry import Point
+from typing import Dict
+from typing import Union
 
 import geopandas as gpd
 import os
@@ -9,24 +11,24 @@ import os
 geo_datum = {"Rijks Driehoekstelsel": "epsg:28992"}
 
 
-def xml_to_etree(xml_file):
+def xml_to_etree(xml_file: str) -> ET._Element:
     """ parses an xml-file to an etree. ETree can be used in function etree_to_dict """
-    t = ET.parse(xml_file).getroot()
-    return t
+    # TODO: xml_file is a path, so make it type Path
+    etree = ET.parse(xml_file).getroot()
+    return etree
 
 
-def etree_to_dict(t, section_start=None, section_end=None):
+def etree_to_dict(etree: Union[ET._Element, ET._Comment], section_start: str = None, section_end: str = None) -> Dict:
     """ converts an etree to a dictionary """
-    if isinstance(t, ET._Comment):
+    # TODO: kan t alleen een ET._Element of ET._Comment zijn?
+    if isinstance(etree, ET._Comment):
+        # TODO: return of toch return {} ??
         return
-    d = {t.tag.rpartition("}")[-1]: {} if t.attrib else None}
-    children = list(t)
+    _dict = {etree.tag.rpartition("}")[-1]: {} if etree.attrib else None}
+    children = list(etree)
 
     # get a section only
-    # ik zou zeggen 'if section_start or section_end'
-    # maar ik durf het niet te veranderen.
-    # wat denk jij?
-    if (not section_start == None) | (not section_end == None):  # noqa
+    if section_start or section_end:
         if section_start:
             start = [
                 idx
@@ -57,24 +59,24 @@ def etree_to_dict(t, section_start=None, section_end=None):
             for k, v in dc.items():
                 dd[k].append(v)
 
-        d = {t.tag.rpartition("}")[-1]: {k: v[0] if len(v) == 1 else v for k, v in dd.items()}}
-    if t.attrib:
-        d[t.tag.rpartition("}")[-1]].update((k, v) for k, v in t.attrib.items())
-    if t.text:
-        text = t.text.strip()
-        if children or t.attrib:
+        _dict = {etree.tag.rpartition("}")[-1]: {k: v[0] if len(v) == 1 else v for k, v in dd.items()}}
+    if etree.attrib:
+        _dict[etree.tag.rpartition("}")[-1]].update((k, v) for k, v in etree.attrib.items())
+    if etree.text:
+        text = etree.text.strip()
+        if children or etree.attrib:
             if text:
-                d[t.tag.rpartition("}")[-1]]["#text"] = text
+                _dict[etree.tag.rpartition("}")[-1]]["#text"] = text
         else:
-            d[t.tag.rpartition("}")[-1]] = text
-    return d
+            _dict[etree.tag.rpartition("}")[-1]] = text
+    return _dict
 
 
-def xml_to_dict(xml_file, section_start=None, section_end=None):
+def xml_to_dict(xml_file: str, section_start: str = None, section_end: str = None) -> Dict:
     """ converts an xml-file to a dictionary """
-    t = xml_to_etree(xml_file)
-    d = etree_to_dict(t, section_start=section_start, section_end=section_end)
-    return d
+    # TODO: xml_file is a path, so make it type Path
+    etree = xml_to_etree(xml_file)
+    return etree_to_dict(etree, section_start=section_start, section_end=section_end)
 
 
 class FewsConfig:
@@ -105,7 +107,7 @@ class FewsConfig:
         # TODO: no camelcase. But leave it for now as a lot of location_sets exists
         self.locationSets = self._get_location_sets()
 
-    def _populate_files(self):
+    def _populate_files(self) -> None:
         """build-in for loading all xml-files"""
         for (dirpath, dirnames, filenames) in os.walk(self.path):
             if dirpath == self.path:
@@ -117,7 +119,7 @@ class FewsConfig:
                 {os.path.splitext(file_name)[0]: os.path.join(dirpath, file_name) for file_name in filenames}
             )
 
-    def _get_location_sets(self):
+    def _get_location_sets(self) -> Dict:
         """build-in method to extract a dict of locationsets"""
         location_sets = xml_to_dict(self.RegionConfigFiles["LocationSets"])["locationSets"]["locationSet"]
         return {
@@ -125,9 +127,10 @@ class FewsConfig:
             for location_set in location_sets
         }
 
-    def get_parameters(self, dict_keys="groups"):
+    def get_parameters(self, dict_keys: str = "groups") -> Dict:
         """method to extract a dictionary of parameter(groups) from a FEWS-config"""
         # TODO: include parameters from CSV-files (support parametersCsvFile)
+        # TODO: is return type Dict of Optional[Dict]?
         parameters = xml_to_dict(self.RegionConfigFiles["Parameters"])["parameters"]
 
         if dict_keys == "groups":
