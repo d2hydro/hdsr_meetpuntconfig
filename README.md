@@ -21,32 +21,27 @@ Het aanmaken van de omgeving doe je met de volgende stappen:
 1. open een windows command prompt (zie https://www.lifewire.com/how-to-open-command-prompt-2618089)
 1. ga naar de locatie het bestandje environment.yml. Wanneer je van map moet veranderen gebruik je het commando 'cd' (zie https://www.lifewire.com/list-of-command-prompt-commands-4092302)
 1. geef de volgende opdracht 
-
 ```
 conda env create -f environment.yml
 ```
 
 1. in de command prompt kun je de caw-omgeving nu openen met:
-
 ```
 conda activate caw
 ```
 
 In het geval je deze omgeving weer wilt verwijderen van je machine kan dit via de command prompt:
-
 ```
 conda env remove -n caw
 ```
 
 In het geval je deze omgeving wilt updaten met een nieuwe yml-file:
-
 ```
 conda env update -f environment.yml
 ```
 
 ## Instalatie meetpuntconfig
 In de geactiveerde caw-omgeving kun je nu het meetpuntconfig pakket installeren vanuit de folder waarin je setup.py vindt:
-
 ```
 pip install -e .
 ```
@@ -58,7 +53,6 @@ Het bestand *config\config_example.json* staat een voorbeeld bestand met variabe
 
 ## Uitvoeren consistentie-checks
 Draai het script in de map scripts vanuit de command prompt in het mapje scripts:
-
 ```
-python run_consistency_checks.py
+python main.py
 ```

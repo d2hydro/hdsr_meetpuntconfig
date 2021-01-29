@@ -1,10 +1,4 @@
 """Module to read, check and write a HDSR meetpuntconfiguratie."""
-__title__ = "histTags2mpt"
-__description__ = "to evaluate a HDSR FEWS-config with a csv with CAW histTags"
-__version__ = "0.1.0"
-__author__ = "Daniel Tollenaar"
-__author_email__ = "daniel@d2hydro.nl"
-__license__ = "MIT License"
 
 from meetpuntconfig.fews_utilities import FewsConfig
 from meetpuntconfig.fews_utilities import xml_to_dict
@@ -17,11 +11,12 @@ from shapely.geometry import Point
 import json
 import logging
 import numpy as np
-import os
 import pandas as pd
 import re
 import sys
 
+
+logger = logging.getLogger(__name__)
 
 pd.options.mode.chained_assignment = None
 
@@ -120,7 +115,7 @@ def _sort_validation_attribs(rule):
 class MeetpuntConfig:
     """Meetpuntconfig class."""
 
-    def __init__(self, config_path, log_level="INFO"):
+    def __init__(self):
         self.paths = dict()
         self.fews_config = None
         self.location_sets = dict()
@@ -133,18 +128,20 @@ class MeetpuntConfig:
         self.consistency = None
         self.parameter_mapping = None
         self.validation_rules = None
-        self.logging = logging
-        self._hoofdloc = None
-        self._subloc = None
-        self._waterstandloc = None
+        self.hoofdloc = None
+        self.subloc = None
+        self.waterstandloc = None
         self.mswloc = None
         self.mpt_hist_tags = None
         self._locs_mapping = dict(
             hoofdlocaties="hoofdloc", sublocaties="subloc", waterstandlocaties="waterstandloc", mswlocaties="mswloc",
         )
-        self.logging.basicConfig(level=os.environ.get("LOGLEVEL", log_level))
-
-        self._read_config(Path(config_path))
+        # initiate meetpunt_config
+        config_json_path = Path("../config/config.json")
+        if not config_json_path.is_file():
+            logger.warning(f"could not find {config_json_path.as_posix()}")
+            sys.exit()
+        self._read_config(config_json_path)
 
     def _read_config(self, config_json):
         if config_json.exists():
@@ -152,7 +149,7 @@ class MeetpuntConfig:
                 config = json.load(src)
                 workdir = Path(config_json).parent
         else:
-            self.logging.error(f"{config_json} does not exist")
+            logger.error(f"{config_json} does not exist")
             sys.exit()
 
         # add paths to config
@@ -167,9 +164,7 @@ class MeetpuntConfig:
                     logging.warning(f"{path} does not exist. Folder will be created")
                     path.mkdir()
                 else:
-                    self.logging.error(
-                        (f"{path} does not exist. " f"Please define existing file " f"in {config_json}.")
-                    )
+                    logger.error(f"{path} does not exist. Please define existing file in {config_json}.")
                     sys.exit()
 
         # add fews_config
@@ -184,9 +179,9 @@ class MeetpuntConfig:
                         "gdf": self.fews_config.get_locations(value),
                     }
                 else:
-                    self.logging.error((f"{key} not a csvFile location-set"))
+                    logger.error(f"{key} not a csvFile location-set")
             else:
-                self.logging.error((f"locationSet {key} specified in {config_json} " f"not in fews-config"))
+                logger.error(f"locationSet {key} specified in {config_json} not in fews-config")
 
         # add rest of config
         self.idmap_files = config["idmap_files"]
@@ -202,9 +197,9 @@ class MeetpuntConfig:
         self.consistency = {key: value for key, value in self.consistency.items() if key in self.fixed_sheets}
 
     def _read_hist_tags(self, force=False):
-        if (not self.hist_tags) or force:
+        if not self.hist_tags or force:
             if "hist_tags_csv" in self.paths.keys():
-                self.logging.info(f"reading histags: {self.paths['hist_tags_csv']}")
+                logger.info(f"reading histags: {self.paths['hist_tags_csv']}")
                 dtype_cols = ["total_min_start_dt", "total_max_end_dt"]
                 self.hist_tags = pd.read_csv(
                     self.paths["hist_tags_csv"], parse_dates=dtype_cols, sep=None, engine="python",
@@ -212,10 +207,10 @@ class MeetpuntConfig:
 
             for col in dtype_cols:
                 if not pd.api.types.is_datetime64_dtype(self.hist_tags[col]):
-                    self.logging.error(
+                    logger.error(
                         (
-                            f"col '{col}' in '{self.paths['hist_tags_csv']} "
-                            "can't be converted to np.datetime64 format. "
+                            f"col '{col}' in {self.paths['hist_tags_csv']} "
+                            "can not be converted to np.datetime64 format. "
                             "Check if values are dates."
                         )
                     )
@@ -225,23 +220,21 @@ class MeetpuntConfig:
     def _read_hist_tags_ignore(self, force=False):
         if (not self.hist_tags_ignore) or force:
             if "mpt_ignore_csv" in self.paths.keys():
-                self.logging.info(f"Reading hist tags to be ingored from " f"{self.paths['mpt_ignore_csv']}")
-
+                logger.info(f"Reading hist tags to be ignored from {self.paths['mpt_ignore_csv']}")
                 self.hist_tags_ignore = pd.read_csv(self.paths["mpt_ignore_csv"], sep=None, header=0, engine="python")
 
             elif "histTag_ignore" in self.consistency.keys():
                 self.hist_tags_ignore = self.consistency["histTag_ignore"]
-                self.logging.info(f"Reading hist tags to be ignored from " f"{self.paths['consistency_xlsx']}")
+                logger.info(f"Reading hist tags to be ignored from {self.paths['consistency_xlsx']}")
 
             else:
-                self.logging.error(
+                logger.error(
                     (
                         f"specify a histTag_ignore worksheet in "
                         f"{self.paths['consistency_xlsx']} or a csv-file "
                         "in the config-json"
                     )
                 )
-
                 sys.exit()
             self.hist_tags_ignore["UNKNOWN_SERIE"] = self.hist_tags_ignore["UNKNOWN_SERIE"].str.replace("#", "")
 
@@ -249,8 +242,13 @@ class MeetpuntConfig:
         if not idmap_files:
             idmap_files = self.idmap_files
         idmaps = [xml_to_dict(self.fews_config.IdMapFiles[idmap])["idMap"]["map"] for idmap in idmap_files]
-
         return [item for sublist in idmaps for item in sublist]
+
+    def _read_locs(self):
+        self.hoofdloc = self.fews_config.get_locations("OPVLWATER_HOOFDLOC")
+        self.subloc = self.fews_config.get_locations("OPVLWATER_SUBLOC")
+        self.waterstandloc = self.fews_config.get_locations("OPVLWATER_WATERSTANDEN_AUTO")
+        self.mswloc = self.fews_config.get_locations("MSW_STATIONS")
 
     def _update_staff_gauge(self, row):
         """Assign upstream and downstream staff gauges to subloc."""
@@ -265,6 +263,7 @@ class MeetpuntConfig:
 
     def hist_tags_to_mpt(self, sheet_name="mpt"):
         """Convert histTag-ids to mpt-ids."""
+
         if self.hist_tags is None:
             self._read_hist_tags()
 
@@ -304,10 +303,11 @@ class MeetpuntConfig:
             update_hlocs, args=[h_locs, mpt_df], axis=1, result_type="expand"
         )
         mpt_df = mpt_df.sort_index()
-        self.consistency["mpt"] = mpt_df
+        self.consistency[sheet_name] = mpt_df
 
     def check_idmap_sections(self, sheet_name="idmap section error"):
         """Check if all KW/OW locations are in the correct section."""
+        logger.info(f"start {self.check_idmap_sections.__name__}")
         self.consistency[sheet_name] = pd.DataFrame(
             columns=["bestand", "externalLocation", "externalParameter", "internalLocation", "internalParameter",]
         )
@@ -330,7 +330,7 @@ class MeetpuntConfig:
                     if idmap_wrong_section:
                         section_start = section["section_start"] if "section_start" in section.keys() else ""
                         section_end = section["section_end"] if "section_end" in section.keys() else ""
-                        self.logging.warning(
+                        logger.warning(
                             (
                                 f"{len(idmap_wrong_section)} "
                                 f"internalLocations not {prefix}XXXXXX "
@@ -346,6 +346,7 @@ class MeetpuntConfig:
 
     def check_missing_hist_tags(self, sheet_name="histTags noMatch"):
         """Check if hisTags are missing in config."""
+        logger.info(f"start {self.check_missing_hist_tags.__name__}")
         if self.hist_tags_ignore is None:
             self._read_hist_tags_ignore()
 
@@ -369,42 +370,37 @@ class MeetpuntConfig:
         self.consistency[sheet_name] = hist_tags_no_match_df
 
         if not self.consistency[sheet_name].empty:
-            self.logging.warning("{} histTags not in idMaps".format(len(self.consistency[sheet_name])))
+            logger.warning("{} histTags not in idMaps".format(len(self.consistency[sheet_name])))
 
         else:
-            self.logging.info("all histTags in idMaps")
+            logger.info("all histTags in idMaps")
 
     def check_ignored_hist_tags(self, sheet_name="histTags ignore match", idmap_files=["IdOPVLWATER"]):
         """Check if ignored histTags do match with idmap."""
+        logger.info(f"start {self.check_ignored_hist_tags.__name__}")
+        # TODO: anti-pattern (we should avoid mutable objects (e.g. list) as arguments)
         if self.hist_tags_ignore is None:
             self._read_hist_tags_ignore()
         if self.hist_tags is None:
             self._read_hist_tags()
         hist_tags_opvlwater_df = self.hist_tags.copy()
-
         idmaps = self._get_idmaps(idmap_files=idmap_files)
-
         hist_tags_opvlwater_df["fews_locid"] = self.hist_tags.apply(idmap2tags, args=[idmaps], axis=1)
-
         hist_tags_opvlwater_df = hist_tags_opvlwater_df[hist_tags_opvlwater_df["fews_locid"].notna()]
-
         hist_tag_ignore_match_df = self.hist_tags_ignore[
             self.hist_tags_ignore["UNKNOWN_SERIE"].isin(hist_tags_opvlwater_df["serie"])
         ]
-
         hist_tag_ignore_match_df = hist_tag_ignore_match_df.set_index("UNKNOWN_SERIE")
         self.consistency[sheet_name] = hist_tag_ignore_match_df
 
         if not self.consistency[sheet_name].empty:
-            self.logging.warning(
-                (f"{len(self.consistency[sheet_name])} " r"histTags should not be in histTags ignore.")
-            )
-
+            logger.warning(f"{len(self.consistency[sheet_name])} histTags should not be in histTags ignore")
         else:
-            self.logging.info("hisTags ignore list consistent with idmaps")
+            logger.info("hisTags ignore list consistent with idmaps")
 
     def check_double_idmaps(self, sheet_name="idmaps double"):
         """Check if identical idmaps are doubled."""
+        logger.info(f"start {self.check_double_idmaps.__name__}")
         self.consistency[sheet_name] = pd.DataFrame(
             columns=["bestand", "externalLocation", "externalParameter", "internalLocation", "internalParameter",]
         )
@@ -421,12 +417,13 @@ class MeetpuntConfig:
 
                 df["bestand"] = idmap_file
                 self.consistency[sheet_name] = pd.concat([self.consistency[sheet_name], df], axis=0)
-                self.logging.warning("{} double idmap(s) in {}".format(len(idmap_doubles), idmap_file))
+                logger.warning(f"{len(idmap_doubles)} double idmap(s) in {idmap_file}")
             else:
-                self.logging.info("No double idmaps in {}".format(idmap_file))
+                logger.info(f"No double idmaps in {idmap_file}")
 
     def check_missing_pars(self, sheet_name="pars missing"):
         """Check if internal parameters in idmaps are missing in paramters.xml."""
+        logger.info(f"start {self.check_missing_pars.__name__}")
         config_parameters = list(self.fews_config.get_parameters(dict_keys="parameters").keys())
 
         idmaps = self._get_idmaps()
@@ -434,18 +431,15 @@ class MeetpuntConfig:
         params_missing = [parameter for parameter in id_map_parameters if parameter not in config_parameters]
 
         if len(params_missing) == 0:
-            self.logging.info("all internal paramters are in config")
+            logger.info("all internal paramters are in config")
         else:
-            self.logging.warning("{} parameter(s) in idMaps are missing in config".format(len(params_missing)))
+            logger.warning(f"{len(params_missing)} parameter(s) in idMaps are missing in config")
 
             self.consistency[sheet_name] = pd.DataFrame({"parameters": params_missing})
 
-    #            self.consistency[sheet_name] = self.consistency[sheet_name].set_index(
-    #               "parameters"
-    #            )
-
     def check_hloc_consistency(self, sheet_name="hloc error"):
         """Check if all sublocs of same hloc have consistent parameters."""
+        logger.info(f"start {self.check_hloc_consistency.__name__}")
         if "xy_ignore" in self.consistency.keys():
             xy_ignore_df = self.consistency["xy_ignore"]
         else:
@@ -531,7 +525,7 @@ class MeetpuntConfig:
                     hloc_errors[key].append(value)
         self.consistency[sheet_name] = pd.DataFrame(hloc_errors)
         if self.consistency[sheet_name].empty:
-            self.logging.info("no consistency errors. Hlocs rewritten from sublocs")
+            logger.info("no consistency errors. Hlocs rewritten from sublocs")
             par_gdf = pd.DataFrame(par_dict)
             columns = list(self.hoofdloc.columns)
             drop_cols = [col for col in self.hoofdloc.columns if (col in par_gdf.columns) & (not col == "LOC_ID")]
@@ -542,11 +536,12 @@ class MeetpuntConfig:
             self.hoofdloc["geometry"] = self.hoofdloc.apply((lambda x: Point(float(x["X"]), float(x["Y"]))), axis=1)
             self.hoofdloc = self.hoofdloc[columns]
         else:
-            self.logging.warning("{} Errors in consistency hlocs".format(len(self.consistency[sheet_name])))
-            self.logging.warning(("Hoofdlocaties will only be re-written " "when consistency errors are resolved"))
+            logger.warning("{} Errors in consistency hlocs".format(len(self.consistency[sheet_name])))
+            logger.warning(("Hoofdlocaties will only be re-written " "when consistency errors are resolved"))
 
     def check_expar_errors_intloc_missing(self, expar_sheet="exPar error", intloc_sheet="intLoc missing"):
         """Check on wrong external parameters and missing internal locations."""
+        logger.info(f"start {self.check_expar_errors_intloc_missing.__name__}")
         expars_allowed = self.external_parameters_allowed
 
         if self.hoofdloc is None:
@@ -641,19 +636,18 @@ class MeetpuntConfig:
         self.consistency[intloc_sheet] = pd.DataFrame({"internalLocation": int_loc_missing})
 
         if len(self.consistency[expar_sheet]) == 0:
-            self.logging.info("geen ExPar errors")
+            logger.info("no ExPar errors")
         else:
-            self.logging.warning("{} locaties met ExPar errors".format(len(self.consistency[expar_sheet])))
+            logger.warning(f"{len(self.consistency[expar_sheet])} locations met ExPar errors")
 
         if len(self.consistency[intloc_sheet]) == 0:
-            self.logging.info("All internal locations are in locationSets")
+            logger.info("All internal locations are in locationSets")
         else:
-            self.logging.warning(
-                "{} Internal locations are not in locationSets.".format(len(self.consistency[intloc_sheet]))
-            )
+            logger.warning(f"{len(self.consistency[intloc_sheet])} Internal locations are not in locationSets")
 
     def check_expar_missing(self, sheet_name="exPar missing"):
         """Check if external paramters are missing on locations."""
+        logger.info(f"start {self.check_expar_missing.__name__}")
         ex_par_missing = {
             "internalLocation": [],
             "exPars": [],
@@ -693,12 +687,13 @@ class MeetpuntConfig:
         self.consistency[sheet_name] = pd.DataFrame(ex_par_missing)
 
         if len(self.consistency[sheet_name]) == 0:
-            self.logging.info("No ExPar missing")
+            logger.info("No ExPar missing")
         else:
-            self.logging.warning("{} Locations with ExPar missing".format(len(self.consistency[sheet_name])))
+            logger.warning(f"{len(self.consistency[sheet_name])} Locations with ExPar missing")
 
     def check_exloc_intloc_consistency(self, sheet_name="exLoc error"):
         """Check if external locations are consistent with internal locations."""
+        logger.info(f"start {self.check_exloc_intloc_consistency.__name__}")
         ex_loc_errors = {"internalLocation": [], "externalLocation": []}
 
         idmap_df = pd.DataFrame.from_dict(self._get_idmaps(["IdOPVLWATER"]))
@@ -740,14 +735,15 @@ class MeetpuntConfig:
         self.consistency[sheet_name] = pd.DataFrame(ex_loc_errors)
 
         if len(self.consistency[sheet_name]) == 0:
-            self.logging.info("all external and internal locations consistent")
+            logger.info("all external and internal locations consistent")
         else:
-            self.logging.warning(
-                "{} external locations inconsistent with internal locations".format(len(self.consistency[sheet_name]))
+            logger.warning(
+                f"{len(self.consistency[sheet_name])} external locations inconsistent with internal locations"
             )
 
     def check_timeseries_logic(self, sheet_name="timeSeries error"):
         """Check if timeseries are consistent with internal locations and parameters."""
+        logger.info(f"start {self.check_timeseries_logic.__name__}")
         if "TS800_ignore" in self.consistency.keys():
             ts_ignore_df = self.consistency["TS800_ignore"]
         else:
@@ -804,7 +800,12 @@ class MeetpuntConfig:
             for int_loc, loc_df in group_df.groupby("internalLocation"):
                 sub_type = self.subloc[self.subloc["LOC_ID"] == int_loc]["TYPE"].values[0]
 
-                end_time = pd.to_datetime(self.subloc[self.subloc["LOC_ID"] == int_loc]["EIND"].values[0])
+                try:
+                    end_time = pd.to_datetime(self.subloc[self.subloc["LOC_ID"] == int_loc]["EIND"].values[0])
+                except Exception as err:
+                    # renier
+                    logger.warning(err)
+                    sys.exit()
 
                 ex_pars = np.unique(loc_df["externalParameter"].values)
                 int_pars = np.unique(loc_df["internalParameter"].values)
@@ -891,17 +892,15 @@ class MeetpuntConfig:
 
         self.consistency[sheet_name] = pd.DataFrame(ts_errors)
         if len(self.consistency[sheet_name]) == 0:
-            self.logging.info(("logical coupling of all timeseries to internal " "locations/parameters"))
+            logger.info("logical coupling of all timeseries to internal locations/parameters")
         else:
-            self.logging.warning(
-                (
-                    f"{len(self.consistency[sheet_name])} timeseries "
-                    r"coupled illogical to internal locations/parameters"
-                )
+            logger.warning(
+                f"{len(self.consistency[sheet_name])} timeseries coupled illogical to internal locations/parameters"
             )
 
     def check_validation_rules(self, sheet_name="validation error"):
         """Check if validation rules are consistent."""
+        logger.info(f"start {self.check_validation_rules.__name__}")
         valid_errors = {
             "internalLocation": [],
             "start": [],
@@ -977,6 +976,7 @@ class MeetpuntConfig:
                     if (attrib not in attribs_required) and (attrib in row.keys())
                 ]
 
+                # TODO: var attribs is not used. On purpose?
                 attribs = [attrib for attrib in attribs_required if attrib not in attribs_missing]
 
                 for key, value in {"missend": attribs_missing, "overbodig": attribs_obsolete,}.items():
@@ -1033,14 +1033,13 @@ class MeetpuntConfig:
         self.consistency[sheet_name] = self.consistency[sheet_name].drop_duplicates()
 
         if len(self.consistency[sheet_name]) == 0:
-            self.logging.info("No missing incorrect validation rules")
+            logger.info("No missing incorrect validation rules")
         else:
-            self.logging.warning(
-                "{} validation rules contain errors/are missing".format(len(self.consistency[sheet_name]))
-            )
+            logger.warning(f"{len(self.consistency[sheet_name])} validation rules contain errors/are missing")
 
     def check_intpar_expar_consistency(self, sheet_name="par mismatch"):
         """Check if internal and external parameters are consistent."""
+        logger.info(f"start {self.check_intpar_expar_consistency.__name__}")
         par_errors = {
             "internalLocation": [],
             "internalParameter": [],
@@ -1048,12 +1047,10 @@ class MeetpuntConfig:
             "fout": [],
         }
 
-        # internal_parameters = [mapping[
-        #     'internal'] for mapping in self.parameter_mapping]
-
         idmap_df = pd.DataFrame.from_dict(self._get_idmaps(["IdOPVLWATER"]))
         for idx, row in idmap_df.iterrows():
             error = None
+            # TODO: ext_par not used. On purpose?
             ext_par = None
             ext_par = [
                 mapping["external"]
@@ -1075,20 +1072,14 @@ class MeetpuntConfig:
         self.consistency[sheet_name] = pd.DataFrame(par_errors)
 
         if len(self.consistency[sheet_name]) == 0:
-            self.logging.info("geen regex fouten op interne en externe parameters")
+            logger.info("no regex errors for internal and external parameters")
         else:
-            self.logging.warning(
-                "{} regex fouten op interne en externe parameters".format(len(self.consistency[sheet_name]))
-            )
+            logger.warning(f"{len(self.consistency[sheet_name])} regex errors for internal and external parameters")
 
     def check_location_set_errors(self, sheet_name="locSet error"):
         """Check on errors in locationsets."""
-        # fews_config = self.fews_config
-        # config = self
+        logger.info(f"start {self.check_location_set_errors.__name__}")
         xy_ignore_df = self.consistency["xy_ignore"]
-        #        from fews_utilities import xml_to_dict
-        #        import regex as re
-
         location_sets = self.location_sets
         idmap_sections = self.idmap_sections
 
@@ -1120,7 +1111,7 @@ class MeetpuntConfig:
         }
 
         for set_name, section_name in sets.items():
-            self.logging.info(set_name)
+            logger.info(set_name)
             location_set = location_sets[set_name]
             location_gdf = location_set["gdf"]
             csv_file = self.fews_config.locationSets[location_set["id"]]["csvFile"]["file"]
@@ -1140,7 +1131,6 @@ class MeetpuntConfig:
             elif set_name == "hoofdlocaties":
                 int_locs = [loc for loc in int_locs if loc[-1] == "0"]
 
-            # idx, row = list(location_gdf.iterrows())[0]
             for idx, row in list(location_gdf.iterrows()):
                 error = {
                     "name_error": False,
@@ -1252,13 +1242,13 @@ class MeetpuntConfig:
                     for key, value in error.items():
                         loc_set_errors[key].append(value)
 
-        self.consistency["locSet error"] = pd.DataFrame(loc_set_errors)
+        self.consistency[sheet_name] = pd.DataFrame(loc_set_errors)
         # opname in samenvatting
 
         if len(self.consistency["locSet error"]) == 0:
-            self.logging.info("no errors in locationSets")
+            logger.info("no errors in locationSets")
         else:
-            self.logging.warning("{} errors in locationSets".format(len(self.consistency["locSet error"])))
+            logger.warning(f"{len(self.consistency['locSet error'])} errors in locationSets")
 
     def write_excel(self):
         """Write consistency to excel."""
@@ -1338,7 +1328,7 @@ class MeetpuntConfig:
         }
 
         for key, value in location_sets.items():
-            self.logging.info(f"writing CSV for set: {key}")
+            logger.info(f"writing CSV for set: {key}")
             gdf = value["gdf"]
             df = gdf.drop("geometry", axis=1)
             df[["START", "EIND"]] = df.apply(update_date, args=(mpt_df, date_threshold), axis=1, result_type="expand")

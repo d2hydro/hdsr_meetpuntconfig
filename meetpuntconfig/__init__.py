@@ -1,5 +1,3 @@
-"""Very important information :-)."""
-
 __title__ = "hdsr_meetpuntconfig"
 __description__ = "to check consistency HDSR meetpuntconfig with FEWS"
 __version__ = "1.0.0"

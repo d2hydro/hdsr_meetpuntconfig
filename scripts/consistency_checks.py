@@ -1,17 +1,3 @@
-# -*- coding: utf-8 -*-
-__title__ = "histTags2mpt"
-__description__ = "to evaluate a HDSR FEWS-config with a csv with CAW histTags"
-__version__ = "0.1"
-__author__ = "Daniel Tollenaar"
-__author_email__ = "daniel@d2hydro.nl"
-__license__ = "MIT License"
-
-"""
-ToDo:
-    - instellingen verplaatsen naar config.ini
-    - logging ook in bestand opslaan
-"""
-
 from collections.abc import Iterable
 from fews_utilities import Config
 from fews_utilities import xml_to_dict
@@ -21,7 +7,6 @@ from openpyxl.styles import PatternFill
 from pathlib import Path
 from shapely.geometry import Point
 
-import configparser
 import json
 import logging
 import numpy as np
@@ -32,7 +17,13 @@ import shutil
 import sys
 
 
+logger = logging.getLogger(__name__)
+
 pd.options.mode.chained_assignment = None
+
+
+# TODO: instellingen verplaatsen naar config.ini
+# TODO: logging ook in bestand opslaan
 
 # instellingen
 # layout excel spreadsheet
@@ -107,7 +98,6 @@ expars_allowed = {
 }
 
 
-# functies
 def idmap2tags(row, idmap):
     """functie voor het toevoegen van fews-locatie-ids aan de hist_tags data-frame in de apply-method"""
 
@@ -172,7 +162,7 @@ def get_attribs(validation_rules, int_pars=None, loc_type=None):
 
 # initialisatie
 workdir = Path(__file__).parent
-logging.basicConfig(level=os.environ.get("LOGLEVEL", "DEBUG"))
+
 
 # inlezen paden vanuit inifile
 config_json = Path(r"..\config\config.json")
@@ -222,8 +212,8 @@ fews_config = Config(fews_config)
 idmap_dict = {idmap: xml_to_dict(fews_config.IdMapFiles[idmap])["idMap"]["map"] for idmap in idmap_files}
 idmap_total = [j for i in idmap_dict.values() for j in i]
 
-## inlezen locationSets locationSets
 
+## inlezen locationSets locationSets
 location_sets = {
     location_set: {
         "id": config["location_sets"][location_set],
