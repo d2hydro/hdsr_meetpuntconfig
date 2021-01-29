@@ -78,26 +78,6 @@ def xml_to_dict(xml_file, section_start=None, section_end=None):
 
 
 class FewsConfig:
-    def _populate_files(self):
-        """build-in for loading all xml-files"""
-        for (dirpath, dirnames, filenames) in os.walk(self.path):
-            if dirpath == self.path:
-                continue
-            prop = next((key for key in self.__dict__.keys() if key in dirpath), None)
-            if not prop:
-                continue
-            self.__dict__[prop].update(
-                {os.path.splitext(file_name)[0]: os.path.join(dirpath, file_name) for file_name in filenames}
-            )
-
-    def _get_location_sets(self):
-        """build-in method to extract a dict of locationsets"""
-        location_sets = xml_to_dict(self.RegionConfigFiles["LocationSets"])["locationSets"]["locationSet"]
-        self.locationSets = {
-            location_set["id"]: {key: value for key, value in location_set.items() if key != "id"}
-            for location_set in location_sets
-        }
-
     def __init__(self, path):
         self.path = path
 
@@ -122,7 +102,28 @@ class FewsConfig:
         self._populate_files()
 
         # get locationSets
-        self._get_location_sets()
+        # TODO: no camelcase. But leave it for now as a lot of location_sets exists
+        self.locationSets = self._get_location_sets()
+
+    def _populate_files(self):
+        """build-in for loading all xml-files"""
+        for (dirpath, dirnames, filenames) in os.walk(self.path):
+            if dirpath == self.path:
+                continue
+            prop = next((key for key in self.__dict__.keys() if key in dirpath), None)
+            if not prop:
+                continue
+            self.__dict__[prop].update(
+                {os.path.splitext(file_name)[0]: os.path.join(dirpath, file_name) for file_name in filenames}
+            )
+
+    def _get_location_sets(self):
+        """build-in method to extract a dict of locationsets"""
+        location_sets = xml_to_dict(self.RegionConfigFiles["LocationSets"])["locationSets"]["locationSet"]
+        return {
+            location_set["id"]: {key: value for key, value in location_set.items() if key != "id"}
+            for location_set in location_sets
+        }
 
     def get_parameters(self, dict_keys="groups"):
         """method to extract a dictionary of parameter(groups) from a FEWS-config"""
