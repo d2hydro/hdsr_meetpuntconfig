@@ -15,7 +15,7 @@ data/csv/oppvlwater_hoofdloc.csv
 *.csv
 *.bak
 scripts/test.py
-config/config.json
+config/config_xxx.json
 data/~$consistency.xlsx
 *.txt
 meetpuntconfig.egg-info/*

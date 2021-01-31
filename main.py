@@ -1,4 +1,4 @@
-from meetpuntconfig.config import MeetpuntConfig
+from checker import MeetpuntConfig
 
 import logging
 import sys
@@ -21,15 +21,13 @@ def setup_logging() -> None:
     stream_handler.setLevel(LOG_LEVEL)
     stream_handler.setFormatter(formatter)
     _logger.addHandler(stream_handler)
-    return _logger
 
 
 if __name__ == "__main__":
-    logger = setup_logging()
-
-    meetpunt_config = MeetpuntConfig()
+    setup_logging()
 
     # run checks
+    meetpunt_config = MeetpuntConfig()
     meetpunt_config.check_idmap_sections()
     meetpunt_config.check_ignored_hist_tags()
     meetpunt_config.check_missing_hist_tags()
@@ -50,5 +48,3 @@ if __name__ == "__main__":
 
     # write csv files
     meetpunt_config.write_csvs()
-
-    logger.info("shutting down")
