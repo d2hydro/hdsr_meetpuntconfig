@@ -1,0 +1,404 @@
+{
+	"paden": {
+		"consistency_xlsx": "..\\data\\consistency.xlsx",
+		"mpt_ignore_csv": "..\\data\\mpt_startenddate_total_pixml_transferdb_ignore.csv",
+		"hist_tags_csv": "..\\data\\get_series_startenddate_CAW_summary_total_sorted_20201013.csv",
+		"fews_config": "D:\\WIS_6.0_ONTWIKKEL_202101\\FEWS_SA\\config",
+		"csv_out": "..\\data\\csv"
+	},
+	"fixed_sheets": [
+		"histTag_ignore",
+        "inhoudsopgave",
+        "exLoc_ignore",
+        "TS800_ignore",
+        "xy_ignore"
+	],
+	"location_sets": {
+		"hoofdlocaties": "OPVLWATER_HOOFDLOC",
+		"sublocaties": "OPVLWATER_SUBLOC",
+		"waterstandlocaties": "OPVLWATER_WATERSTANDEN_AUTO",
+		"mswlocaties": "MSW_STATIONS",
+		"peilschalen": "OPVLWATER_PEILSCHALEN"
+	},
+	"idmap_files": [
+		"IdOPVLWATER",
+		"IdOPVLWATER_HYMOS",
+		"IdHDSR_NSC",
+		"IdOPVLWATER_WQ",
+		"IdGrondwaterCAW"
+	],
+	"idmap_sections": {
+		"IdOPVLWATER": {
+			"KUNSTWERKEN": [
+				{
+					"section_start": "<!--KUNSTWERK SUBLOCS (old CAW id)-->",
+					"section_end": "<!--WATERSTANDSLOCATIES (old CAW id)-->"
+				},
+				{
+					"section_start": "<!--KUNSTWERK SUBLOCS (new CAW id)-->",
+					"section_end": "<!--WATERSTANDSLOCATIES (new CAW id)-->"
+				}
+			],
+			"WATERSTANDLOCATIES": [
+				{
+					"section_start": "<!--WATERSTANDSLOCATIES (old CAW id)-->",
+					"section_end": "<!--MSW (old CAW id)-->"
+				},
+				{
+					"section_start": "<!--WATERSTANDSLOCATIES (new CAW id)-->",
+					"section_end": "<!--MSW (new CAW id)-->"
+				}
+			],
+			"MSWLOCATIES": [
+				{
+					"section_start": "<!--MSW (new CAW id)-->"
+				}
+			]
+		},
+		"IdOPVLWATER_HYMOS": {
+			"KUNSTWERKEN": [
+				{
+					"section_end": "<!--WATERSTANDSLOCATIES-->"
+				}
+			],
+			"WATERSTANDLOCATIES": [
+				{
+					"section_start": "<!--WATERSTANDSLOCATIES-->",
+					"section_end": "<!--OVERIG-->"
+				}
+			]
+		}
+	},
+	"external_parameters_allowed": {
+		"pompvijzel": [
+			"FQ.$",
+			"I.B$",
+			"IB.$",
+			"I.H$",
+			"IH.$",
+			"I.L$",
+			"IL.$",
+			"Q.$",
+			"TT.$"
+		],
+		"stuw": [
+			"SW.$",
+			"Q.$",
+			"ES.$"
+		],
+		"schuif": [
+			"ES.$",
+			"SP.$",
+			"SS.$",
+			"Q.$",
+			"SM.$"
+		],
+		"afsluiter": [
+			"ES.$"
+		],
+		"debietmeter": [
+			"Q.$"
+		],
+		"vispassage": [
+			"ES.$",
+			"SP.$",
+			"SS.$",
+			"Q.$"
+		],
+		"krooshek": [
+			"HB.$",
+			"HO.$"
+		],
+		"waterstand": [
+			"HB.$",
+			"HO.$",
+			"H$"
+		]
+	},
+	"parameter_mapping": [
+		{
+			"internal": "DD.",
+			"external": "I.B"
+		},
+		{
+			"internal": "DDH.",
+			"external": "I.H"
+		},
+		{
+			"internal": "DDL.",
+			"external": "I.L"
+		},
+		{
+			"internal": "ES.",
+			"external": "ES."
+		},
+		{
+			"internal": "ES2.",
+			"external": "ES."
+		},
+		{
+			"internal": "F.",
+			"external": "FQ."
+		},
+		{
+			"internal": "H.G.",
+			"external": "H"
+		},
+		{
+			"internal": "H.G.",
+			"external": "HB."
+		},
+		{
+			"internal": "H.G.",
+			"external": "HO."
+		},
+		{
+			"internal": "H.R.",
+			"external": "HR."
+		},
+		{
+			"internal": "H.S.",
+			"external": "HS."
+		},
+		{
+			"internal": "H2.R.",
+			"external": "HR."
+		},
+		{
+			"internal": "H2.S.",
+			"external": "HS."
+		},
+		{
+			"internal": "H3.R.",
+			"external": "HR."
+		},
+		{
+			"internal": "H3.S.",
+			"external": "HS."
+		},
+		{
+			"internal": "Hastr.",
+			"external": "HA"
+		},
+		{
+			"internal": "Hh.",
+			"external": "SM."
+		},
+		{
+			"internal": "Hh.",
+			"external": "SS."
+		},
+		{
+			"internal": "Hk.",
+			"external": "SW."
+		},
+		{
+			"internal": "IB.",
+			"external": "IB."
+		},
+		{
+			"internal": "IBH.",
+			"external": "IH."
+		},
+		{
+			"internal": "IBL.",
+			"external": "IL."
+		},
+		{
+			"internal": "POS.",
+			"external": "SP."
+		},
+		{
+			"internal": "POS2.",
+			"external": "SP."
+		},
+		{
+			"internal": "Q.G.",
+			"external": "Q."
+		},
+		{
+			"internal": "Q.R.",
+			"external": "QR1"
+		},
+		{
+			"internal": "Q.S.",
+			"external": "QS1"
+		},
+		{
+			"internal": "Q2.R.",
+			"external": "QR2"
+		},
+		{
+			"internal": "Q2.S.",
+			"external": "QS2"
+		},
+		{
+			"internal": "Q3.R.",
+			"external": "QR3"
+		},
+		{
+			"internal": "Q3.S.",
+			"external": "QS3"
+		},
+		{
+			"internal": "Qipcl.G.",
+			"external": "Q."
+		},
+		{
+			"internal": "TT.",
+			"external": "TT."
+		},
+		{
+			"internal": "WR.",
+			"external": "WR"
+		},
+		{
+			"internal": "WS.",
+			"external": "WS"
+		}
+	],
+	"validation_rules": {
+		"sublocaties": [
+			{
+				"parameter": "H.R.",
+				"extreme_values": {
+					"hmax": "HR1_HMAX",
+					"hmin": "HR1_HMIN"
+				}
+			},
+			{
+				"parameter": "H2.R.",
+				"extreme_values": {
+					"hmax": "HR2_HMAX",
+					"hmin": "HR2_HMIN"
+				}
+			},
+			{
+				"parameter": "H3.R.",
+				"extreme_values": {
+					"hmax": "HR3_HMAX",
+					"hmin": "HR3_HMIN"
+				}
+			},
+			{
+				"parameter": "Q.B.",
+				"type": "debietmeter",
+				"extreme_values": {
+					"hmax": "Q_HMAX",
+					"smax": "Q_SMAX",
+					"smin": "Q_SMIN",
+					"hmin": "Q_HMIN"
+				}
+			},
+			{
+				"parameter": "Q.G.",
+				"type": "debietmeter",
+				"extreme_values": {
+					"hmax": "Q_HMAX",
+					"smax": "Q_SMAX",
+					"smin": "Q_SMIN",
+					"hmin": "Q_HMIN"
+				}
+			},
+			{
+				"parameter": "F.",
+				"extreme_values": {
+					"hmax": "FRQ_HMAX",
+					"hmin": "FRQ_HMIN"
+				}
+			},
+			{
+				"parameter": "Hh.",
+				"extreme_values": {
+					"hmax": "HEF_HMAX",
+					"hmin": "HEF_HMIN"
+				}
+			},
+			{
+				"parameter": "POS.",
+				"extreme_values": {
+					"hmax": "PERC_HMAX",
+					"smax": "PERC_SMAX",
+					"smin": "PERC_SMIN",
+					"hmin": "PERC_HMIN"
+				}
+			},
+			{
+				"parameter": "POS2.",
+				"extreme_values": {
+					"hmax": "PERC2_HMAX",
+					"smax": "PERC2_SMAX",
+					"smin": "PERC2_SMIN",
+					"hmin": "PERC2_HMIN"
+				}
+			},
+			{
+				"parameter": "TT.",
+				"extreme_values": {
+					"hmax": "TT_HMAX",
+					"hmin": "TT_HMIN"
+				}
+			}
+		],
+		"hoofdlocaties": [
+			{
+				"parameter": "H.S.",
+				"extreme_values": {
+					"hmax": "HS1_HMAX",
+					"hmin": "HS1_HMIN"
+				}
+			},
+			{
+				"parameter": "H2.S.",
+				"extreme_values": {
+					"hmax": "HS2_HMAX",
+					"hmin": "HS2_HMIN"
+				}
+			},
+			{
+				"parameter": "H3.S.",
+				"extreme_values": {
+					"hmax": "HS3_HMAX",
+					"hmin": "HS3_HMIN"
+				}
+			}
+		],
+		"waterstandlocaties": [
+			{
+				"parameter": "H.G.",
+				"extreme_values": {
+					"hmax": "HARDMAX",
+					"smax": [
+						{
+							"period": 1,
+							"attribute": "WIN_SMAX"
+						},
+						{
+							"period": 2,
+							"attribute": "OV_SMAX"
+						},
+						{
+							"period": 3,
+							"attribute": "ZOM_SMAX"
+						}
+					],
+					"smin": [
+						{
+							"period": 1,
+							"attribute": "WIN_SMIN"
+						},
+						{
+							"period": 2,
+							"attribute": "OV_SMIN"
+						},
+						{
+							"period": 3,
+							"attribute": "ZOM_SMIN"
+						}
+					],
+					"hmin": "HARDMIN"
+				}
+			}
+		]
+	}
+}
